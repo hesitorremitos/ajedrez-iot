@@ -15,10 +15,10 @@ Modulo de ajedrez que valida movimientos y gestiona el estado de una partida. Op
 
 ## Instalacion
 
-Copiar el archivo `Chess.py` al dispositivo ESP32 o al directorio de tu proyecto.
+Para MicroPython en ESP32, copia el paquete a `lib/chess`:
 
 ```python
-from Chess import Chess
+from chess import Chess
 ```
 
 ## API Publica
@@ -426,11 +426,10 @@ print(chess.getFen())
 
 ## Pruebas
 
-El modulo incluye un conjunto completo de pruebas. Para ejecutarlas:
+Las pruebas se ejecutan con pytest desde la raiz del proyecto:
 
 ```bash
-cd modules/chess
-python run_all_tests.py
+pytest tests/modules/chess
 ```
 
 Las pruebas cubren:
