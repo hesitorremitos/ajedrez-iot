@@ -3,7 +3,7 @@
 import sys
 import pytest
 from modules.chess import Chess
-from modules.chessdisplay.ChessDisplay import _PIECE_BITMAPS, _PIECE_OUTLINES
+from modules.chessdisplay.ChessDisplay import _PIECE_BITMAPS, _PIECE_EXPANDED
 
 # Obtener referencia al modulo (no la clase) para parchear Pin, I2C, SSD1306_I2C
 cd_module = sys.modules["modules.chessdisplay.ChessDisplay"]
@@ -432,13 +432,13 @@ def test_white_black_pieces_distinguishable(display, chess):
     # mostrar diferencia entre filled y outline
     # Comparar los bitmaps directamente
     rook_filled = _PIECE_BITMAPS["R"]
-    rook_outline = _PIECE_OUTLINES["R"]
+    rook_outline = _PIECE_EXPANDED["R"]
     assert rook_filled != rook_outline, "Bitmap relleno y contorno deben ser diferentes"
 
     # Verificar para todas las piezas
     for piece_type in "KQRBNP":
         filled = _PIECE_BITMAPS[piece_type]
-        outline = _PIECE_OUTLINES[piece_type]
+        outline = _PIECE_EXPANDED[piece_type]
         assert filled != outline, (
             f"Bitmap de {piece_type}: relleno y contorno deben ser diferentes"
         )
@@ -519,27 +519,27 @@ def test_panel_text_x_offset(display):
         assert call["x"] == 64, f"Text '{call['text']}' debe estar en x=64"
 
 
-def test_outline_is_subset_of_filled():
-    """Verifica que cada pixel del outline esta tambien en el bitmap relleno."""
+def test_expanded_contains_filled():
+    """Verifica que el bitmap expandido contiene todos los pixels del filled."""
     for piece_type in "KQRBNP":
         filled = _PIECE_BITMAPS[piece_type]
-        outline = _PIECE_OUTLINES[piece_type]
+        expanded = _PIECE_EXPANDED[piece_type]
         for row in range(8):
-            # Todos los bits del outline deben estar en el filled
-            assert (outline[row] & filled[row]) == outline[row], (
-                f"Pieza {piece_type} row {row}: outline tiene bits fuera del filled"
+            # Todos los bits del filled deben estar en el expanded
+            assert (expanded[row] & filled[row]) == filled[row], (
+                f"Pieza {piece_type} row {row}: expanded no contiene todos los bits del filled"
             )
 
 
-def test_outline_has_fewer_pixels():
-    """Verifica que el outline tiene estrictamente menos pixels que el filled."""
+def test_expanded_has_more_pixels():
+    """Verifica que el expanded tiene mas pixels que el filled (borde adicional)."""
     for piece_type in "KQRBNP":
         filled = _PIECE_BITMAPS[piece_type]
-        outline = _PIECE_OUTLINES[piece_type]
+        expanded = _PIECE_EXPANDED[piece_type]
         filled_count = sum(bin(b).count("1") for b in filled)
-        outline_count = sum(bin(b).count("1") for b in outline)
-        assert outline_count < filled_count, (
-            f"Pieza {piece_type}: outline ({outline_count}) debe tener menos "
+        expanded_count = sum(bin(b).count("1") for b in expanded)
+        assert expanded_count > filled_count, (
+            f"Pieza {piece_type}: expanded ({expanded_count}) debe tener mas "
             f"pixels que filled ({filled_count})"
         )
 

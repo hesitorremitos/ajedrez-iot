@@ -26,35 +26,24 @@ _PIECE_BITMAPS = {
 }
 
 
-def _makeOutline(bmp):
+def _makeExpanded(bmp):
     """
-    Computa bitmap de contorno (outline) a partir de un bitmap relleno.
-    Un pixel es borde si esta encendido y al menos un vecino 4-conectado esta apagado.
+    Expande un bitmap 1 pixel en todas direcciones (4-conectado).
+    El resultado es el bitmap original + sus vecinos inmediatos.
     """
     out = []
     for r in range(8):
-        row = 0
-        for c in range(8):
-            b = 7 - c
-            if not (bmp[r] & (1 << b)):
-                continue
-            if r == 0 or not (bmp[r - 1] & (1 << b)):
-                row |= 1 << b
-                continue
-            if r == 7 or not (bmp[r + 1] & (1 << b)):
-                row |= 1 << b
-                continue
-            if c == 0 or not (bmp[r] & (1 << (b + 1))):
-                row |= 1 << b
-                continue
-            if c == 7 or not (bmp[r] & (1 << (b - 1))):
-                row |= 1 << b
-        out.append(row)
+        above = bmp[r - 1] if r > 0 else 0
+        current = bmp[r]
+        below = bmp[r + 1] if r < 7 else 0
+        # Expandir: arriba, abajo, izquierda, derecha
+        expanded = above | current | below | (current << 1) | (current >> 1)
+        out.append(expanded & 0xFF)
     return bytes(out)
 
 
-# Bitmaps de contorno para piezas negras (48 bytes adicionales)
-_PIECE_OUTLINES = {k: _makeOutline(v) for k, v in _PIECE_BITMAPS.items()}
+# Bitmaps expandidos para piezas negras (borde blanco + relleno negro)
+_PIECE_EXPANDED = {k: _makeExpanded(v) for k, v in _PIECE_BITMAPS.items()}
 
 # Patron dithering checkerboard para casillas oscuras (8 bytes)
 # Simula "gris" en pantalla monocromatica, mejora contraste con piezas
@@ -146,24 +135,31 @@ class ChessDisplay:
                 if piece == " ":
                     continue
 
-                # Seleccionar bitmap: relleno para blancas, contorno para negras
                 isWhite = piece.isupper()
                 pieceKey = piece.upper()
-                bitmap = (
-                    _PIECE_BITMAPS[pieceKey] if isWhite else _PIECE_OUTLINES[pieceKey]
-                )
+                bmp = _PIECE_BITMAPS[pieceKey]
 
-                # Color de dibujo: invertido en casillas oscuras
-                color = 0 if isDark else 1
+                # Limpiar area de la pieza (quita dithering debajo)
+                if isDark:
+                    display.fill_rect(sx, sy, 8, 8, 0)
 
-                # Dibujar bitmap pixel a pixel
-                for row in range(8):
-                    rowByte = bitmap[row]
-                    if rowByte == 0:
-                        continue
-                    for col in range(8):
-                        if rowByte & (0x80 >> col):
-                            display.pixel(sx + col, sy + row, color)
+                if isWhite:
+                    # Pieza blanca: bitmap solido blanco
+                    self._drawBitmap(display, sx, sy, bmp, 1)
+                else:
+                    # Pieza negra: borde blanco expandido + relleno negro (solida con borde)
+                    self._drawBitmap(display, sx, sy, _PIECE_EXPANDED[pieceKey], 1)
+                    self._drawBitmap(display, sx, sy, bmp, 0)
+
+    def _drawBitmap(self, display, sx, sy, bitmap, color):
+        """Dibuja un bitmap 8x8 en la posicion indicada."""
+        for row in range(8):
+            rowByte = bitmap[row]
+            if rowByte == 0:
+                continue
+            for col in range(8):
+                if rowByte & (0x80 >> col):
+                    display.pixel(sx + col, sy + row, color)
 
     def _renderPanel(self):
         """Dibuja el panel informativo en la zona derecha (64x64 pixels)."""
