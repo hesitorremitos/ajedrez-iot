@@ -47,6 +47,7 @@ class Chess:
         self._history = []  # Lista de tuplas [(mov_blancas, mov_negras), ...]
         self._moveStack = []  # Pila de estados para deshacer
         self._currentTurnMove = None  # Movimiento de blancas pendiente de negras
+        self._capturedPieces = None  # Piezas capturadas {"w": [], "b": []}
 
         # Callbacks
         self._onCheck = None
@@ -188,6 +189,10 @@ class Chess:
             "fullmoveNumber": self._fullmoveNumber,
             "history": [tuple(t) for t in self._history],
             "currentTurnMove": self._currentTurnMove,
+            "capturedPieces": {
+                "w": self._capturedPieces["w"][:],
+                "b": self._capturedPieces["b"][:],
+            },
         }
         self._moveStack.append(state)
 
@@ -201,6 +206,7 @@ class Chess:
         self._fullmoveNumber = state["fullmoveNumber"]
         self._history = [list(t) for t in state["history"]]
         self._currentTurnMove = state["currentTurnMove"]
+        self._capturedPieces = state["capturedPieces"]
 
     # ==================== Deteccion de ataques ====================
 
@@ -600,6 +606,7 @@ class Chess:
         self._history = []
         self._moveStack = []
         self._currentTurnMove = None
+        self._capturedPieces = {"w": [], "b": []}
         self._log("Game reset to initial position")
 
     def play(self, move):
@@ -752,6 +759,14 @@ class Chess:
             capturedPawnRank = 4 if isWhite else 3
             capturedPawnIndex = capturedPawnRank * 8 + self._getFile(toIndex)
             self._board[capturedPawnIndex] = " "
+
+        # Registrar pieza capturada
+        captureColor = "w" if isWhite else "b"
+        if targetPiece != " ":
+            self._capturedPieces[captureColor].append(targetPiece)
+        elif isEnPassant:
+            capturedPawn = "p" if isWhite else "P"
+            self._capturedPieces[captureColor].append(capturedPawn)
 
         # Mover la pieza
         self._board[toIndex] = piece
@@ -939,6 +954,26 @@ class Chess:
         self._log("Move undone")
         return True
 
+    def getCapturedPieces(self):
+        """
+        Obtiene las piezas capturadas durante la partida.
+
+        Returns:
+            dict: {"w": str, "b": str} donde "w" contiene piezas capturadas
+                por blancas (piezas negras, minusculas) y "b" piezas capturadas
+                por negras (piezas blancas, mayusculas).
+                Ordenadas por valor descendente (dama, torre, alfil, caballo, peon).
+        """
+        order = "qrbnp"
+
+        def sortKey(c):
+            cl = c.lower()
+            return order.index(cl) if cl in order else 5
+
+        w = "".join(sorted(self._capturedPieces["w"], key=sortKey))
+        b = "".join(sorted(self._capturedPieces["b"], key=sortKey))
+        return {"w": w, "b": b}
+
     def getTurn(self):
         """
         Devuelve el turno actual.
@@ -1115,6 +1150,7 @@ class Chess:
         self._history = []
         self._moveStack = []
         self._currentTurnMove = None
+        self._capturedPieces = {"w": [], "b": []}
 
         self._log(f"Position loaded from FEN: {fen}")
 
