@@ -366,6 +366,49 @@ class TestAccessPointGetClients:
         assert clients == []
 
 
+class TestAccessPointGetClientsInfo:
+    """Tests for getClientsInfo() method"""
+
+    def test_get_clients_info_returns_formatted_list(self, access_point_module):
+        """getClientsInfo() returns formatted list with MAC addresses"""
+        AccessPoint, _ = access_point_module
+
+        ap = AccessPoint.AccessPoint(ssid="Test", password="12345678")
+        ap.start()
+
+        # Simulate connected clients
+        ap._ap.set_stations(
+            [(b"\xaa\xbb\xcc\xdd\xee\xff",), (b"\x11\x22\x33\x44\x55\x66",)]
+        )
+
+        clients_info = ap.getClientsInfo()
+
+        assert len(clients_info) == 2
+        assert clients_info[0] == {"mac": "aa:bb:cc:dd:ee:ff"}
+        assert clients_info[1] == {"mac": "11:22:33:44:55:66"}
+
+    def test_get_clients_info_when_stopped_returns_empty(self, access_point_module):
+        """getClientsInfo() returns empty list when AP stopped"""
+        AccessPoint, _ = access_point_module
+
+        ap = AccessPoint.AccessPoint(ssid="Test", password="12345678")
+
+        clients_info = ap.getClientsInfo()
+
+        assert clients_info == []
+
+    def test_get_clients_info_no_clients_returns_empty(self, access_point_module):
+        """getClientsInfo() returns empty list when no clients"""
+        AccessPoint, _ = access_point_module
+
+        ap = AccessPoint.AccessPoint(ssid="Test", password="12345678")
+        ap.start()
+
+        clients_info = ap.getClientsInfo()
+
+        assert clients_info == []
+
+
 class TestAccessPointOpenNetwork:
     """Tests for open network (no password) scenarios"""
 

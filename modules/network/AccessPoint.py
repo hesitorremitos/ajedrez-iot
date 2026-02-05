@@ -182,3 +182,31 @@ class AccessPoint:
 
         except Exception:
             return []
+
+    def getClientsInfo(self):
+        """
+        Get list of connected clients with formatted information.
+
+        Returns:
+            list: List of dicts with client info. Each dict contains:
+                  {'mac': 'aa:bb:cc:dd:ee:ff'}
+
+        Note: IP addresses are not available in MicroPython's AP mode
+              without implementing a full DHCP server.
+        """
+        try:
+            clients = self.getClients()
+            if not clients:
+                return []
+
+            formatted = []
+            for client in clients:
+                # client[0] contains MAC address as bytes
+                mac_bytes = client[0]
+                mac_str = ":".join(f"{b:02x}" for b in mac_bytes)
+                formatted.append({"mac": mac_str})
+
+            return formatted
+
+        except Exception:
+            return []
