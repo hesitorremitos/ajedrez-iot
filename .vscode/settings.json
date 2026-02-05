@@ -1,7 +1,8 @@
 {
     "python.analysis.extraPaths": [
         ".venv/Lib/site-packages",
-        "./modules/chess"
+        "./modules/chess",
+        "./lib"
     ],
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingModuleSource": "none"

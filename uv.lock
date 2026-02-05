@@ -88,12 +88,17 @@ name = "zulma"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "micropython-esp32-stubs" },
     { name = "pytest" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "micropython-esp32-stubs" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "micropython-esp32-stubs", specifier = ">=1.27.0.post1" },
+    { name = "micropython-esp32-stubs", marker = "extra == 'dev'", specifier = ">=1.27.0.post1" },
     { name = "pytest", specifier = ">=9.0.2" },
 ]
+provides-extras = ["dev"]
