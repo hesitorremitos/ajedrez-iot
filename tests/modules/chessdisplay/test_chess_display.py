@@ -453,11 +453,16 @@ def test_checkered_pattern_correct(display, chess):
     display.render()
     mock = get_mock_display(display)
 
-    # a1 (file=0, rank=0): isDark = (0+0)%2==0 → oscura (pixels=1)
+    # a1 (file=0, rank=0): isDark = (0+0)%2==0 → oscura (patron dithering)
     # En pantalla con flipped=False: sx=0, sy=(7-0)*8=56
+    # El patron dithering alterna pixels: filas pares 0xAA, filas impares 0x55
     a1_region = mock.getRegion(0, 56, 8, 8)
-    for row in a1_region:
-        assert all(p == 1 for p in row), "a1 debe ser casilla oscura (todo 1s)"
+    a1_flat = [p for row in a1_region for p in row]
+    # Debe tener mezcla de 0s y 1s (dithering), exactamente 50% de cada uno
+    count_ones = sum(a1_flat)
+    assert count_ones == 32, (
+        "Casilla oscura debe tener patron dithering (32 pixels encendidos)"
+    )
 
     # b1 (file=1, rank=0): isDark = (1+0)%2==1 → clara (pixels=0)
     # sx=8, sy=56
@@ -471,11 +476,14 @@ def test_checkered_pattern_correct(display, chess):
     for row in a2_region:
         assert all(p == 0 for p in row), "a2 debe ser casilla clara (todo 0s)"
 
-    # b2 (file=1, rank=1): isDark = (1+1)%2==0 → oscura
+    # b2 (file=1, rank=1): isDark = (1+1)%2==0 → oscura (patron dithering)
     # sx=8, sy=48
     b2_region = mock.getRegion(8, 48, 8, 8)
-    for row in b2_region:
-        assert all(p == 1 for p in row), "b2 debe ser casilla oscura (todo 1s)"
+    b2_flat = [p for row in b2_region for p in row]
+    count_ones = sum(b2_flat)
+    assert count_ones == 32, (
+        "Casilla oscura debe tener patron dithering (32 pixels encendidos)"
+    )
 
 
 # ==================== Tests adicionales ====================

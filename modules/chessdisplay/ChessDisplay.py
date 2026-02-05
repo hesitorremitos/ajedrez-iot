@@ -56,6 +56,10 @@ def _makeOutline(bmp):
 # Bitmaps de contorno para piezas negras (48 bytes adicionales)
 _PIECE_OUTLINES = {k: _makeOutline(v) for k, v in _PIECE_BITMAPS.items()}
 
+# Patron dithering checkerboard para casillas oscuras (8 bytes)
+# Simula "gris" en pantalla monocromatica, mejora contraste con piezas
+_DARK_SQUARE_PATTERN = bytes([0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55])
+
 
 class ChessDisplay:
     """
@@ -129,9 +133,13 @@ class ChessDisplay:
                 # Patron ajedrezado: a1 (file=0, rank=0) es casilla oscura
                 isDark = (file + rank) % 2 == 0
 
-                # Rellenar casilla oscura
+                # Dibujar casilla oscura con patron dithering (simula gris)
                 if isDark:
-                    display.fill_rect(sx, sy, 8, 8, 1)
+                    for row in range(8):
+                        rowByte = _DARK_SQUARE_PATTERN[row]
+                        for col in range(8):
+                            if rowByte & (0x80 >> col):
+                                display.pixel(sx + col, sy + row, 1)
 
                 # Pieza en esta casilla
                 piece = board[rank * 8 + file]
