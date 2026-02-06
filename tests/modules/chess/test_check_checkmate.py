@@ -64,7 +64,6 @@ def test_checkmate_scholars_mate(chess):
         chess.play(move)
 
     assert chess.isCheckmate() is True
-    assert chess.isGameOver() is True
 
 
 def test_checkmate_back_rank(chess):
@@ -104,21 +103,15 @@ def test_checkmate_callback():
     from modules.chess import Chess
 
     checkmate_called = {"value": False}
-    gameover_called = {"value": False}
 
     def on_checkmate_handler():
         checkmate_called["value"] = True
 
-    def on_gameover_handler():
-        gameover_called["value"] = True
-
     chess = Chess()
     chess.onCheckmate = on_checkmate_handler
-    chess.onGameOver = on_gameover_handler
 
     moves = ["e2-e4", "e7-e5", "f1-c4", "b8-c6", "d1-h5", "g8-f6", "h5-f7"]
     for move in moves:
         chess.play(move)
 
     assert checkmate_called["value"] is True
-    assert gameover_called["value"] is True

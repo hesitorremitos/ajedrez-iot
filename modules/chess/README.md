@@ -1,24 +1,25 @@
 # Modulo Chess para ESP32 (MicroPython)
 
-Modulo de ajedrez que valida movimientos y gestiona el estado de una partida. Optimizado para entornos con recursos limitados como ESP32.
+Motor puro de reglas de ajedrez. Valida y ejecuta movimientos, detecta jaque/mate/ahogado y material insuficiente. Optimizado para entornos con recursos limitados como ESP32.
+
+> **v2.0**: Chess es ahora un motor puro de reglas. La logica de partida (historial, undo, capturas, PGN, fin de partida) se mueve a `ChessGame`. Ver `modules/chessgame/`.
 
 ## Caracteristicas
 
 - Validacion completa de movimientos para todas las piezas
 - Movimientos especiales: enroque, promocion de peon, captura al paso (en passant)
 - Deteccion de jaque, jaque mate y ahogado
-- Deteccion de tablas por material insuficiente y regla de 50 movimientos
-- Soporte para notacion FEN y PGN
-- Sistema de callbacks para eventos del juego
-- Funcion de deshacer movimientos (undo)
-- Historial de partida
+- Deteccion de material insuficiente
+- Soporte para notacion FEN (6 campos standard)
+- Callback `onMove` con detalles de cada movimiento ejecutado
+- Callbacks de posicion: `onCheck`, `onCheckmate`, `onStalemate`
 
 ## Instalacion
 
 Para MicroPython en ESP32, copia el paquete a `lib/chess`:
 
 ```python
-from chess import Chess
+from modules.chess import Chess
 ```
 
 ## API Publica
@@ -35,15 +36,15 @@ chess = Chess(debug=False)
 
 ### Metodos Principales
 
-#### `play(move: str) -> bool`
-Ejecuta un movimiento en notacion algebraica.
+#### `play(move) -> bool`
+Valida y ejecuta un movimiento. Retorna True si exitoso, False si invalido. Dispara callbacks.
 
 ```python
 chess = Chess()
-chess.play('e2-e4')   # Retorna: True
-chess.play('e7-e5')   # Retorna: True
-chess.play('g1-f3')   # Retorna: True
-chess.play('invalid') # Retorna: False
+chess.play('e2-e4')   # True
+chess.play('e7-e5')   # True
+chess.play('g1-f3')   # True
+chess.play('invalid') # False
 ```
 
 **Formato de movimientos:**
@@ -54,7 +55,7 @@ chess.play('invalid') # Retorna: False
 - Enroque largo: `O-O-O`
 - En passant: `e5-d6`
 
-#### `getLegalMoves(square: str) -> list[str]`
+#### `getLegalMoves(square) -> list`
 Retorna lista de movimientos legales para la pieza en la casilla indicada.
 
 ```python
@@ -76,7 +77,7 @@ moves = chess.getLegalMoves('e1')
 print(moves)  # ['e1-d1', 'e1-f1', 'O-O', 'O-O-O']
 ```
 
-#### `getPiece(square: str) -> str`
+#### `getPiece(square) -> str`
 Retorna la pieza en la casilla especificada.
 
 ```python
@@ -84,8 +85,6 @@ chess = Chess()
 print(chess.getPiece('e1'))  # 'K' (Rey blanco)
 print(chess.getPiece('e8'))  # 'k' (Rey negro)
 print(chess.getPiece('e4'))  # ' ' (Casilla vacia)
-print(chess.getPiece('a2'))  # 'P' (Peon blanco)
-print(chess.getPiece('a7'))  # 'p' (Peon negro)
 ```
 
 **Notacion de piezas:**
@@ -93,21 +92,22 @@ print(chess.getPiece('a7'))  # 'p' (Peon negro)
 - Minusculas: piezas negras (p, n, b, r, q, k)
 - Espacio: casilla vacia
 
-#### `undo() -> bool`
-Deshace el ultimo movimiento realizado.
+#### `getBoard() -> list`
+Retorna la representacion interna del tablero como lista de 64 caracteres.
 
 ```python
 chess = Chess()
-chess.play('e2-e4')
-print(chess.getPiece('e4'))  # 'P'
-
-chess.undo()
-print(chess.getPiece('e4'))  # ' '
-print(chess.getPiece('e2'))  # 'P'
+board = chess.getBoard()
+print(board[0])   # 'R' (a1)
+print(board[4])   # 'K' (e1)
+print(board[56])  # 'r' (a8)
+print(board[60])  # 'k' (e8)
 ```
 
+Indice 0 = a1, indice 63 = h8. Acceso directo O(1) sin parsear FEN.
+
 #### `reset()`
-Reinicia la partida a la posicion inicial.
+Reinicia el tablero a la posicion inicial.
 
 ```python
 chess = Chess()
@@ -115,13 +115,13 @@ chess.play('e2-e4')
 chess.play('e7-e5')
 chess.reset()
 print(chess.getTurn())  # 'w'
-print(chess.getHistory())  # []
+print(chess.getFen())   # posicion inicial
 ```
 
 ### Metodos de Estado
 
 #### `getTurn() -> str`
-Retorna el jugador en turno.
+Retorna el jugador en turno: `'w'` o `'b'`.
 
 ```python
 chess = Chess()
@@ -136,21 +136,17 @@ Indica si el jugador en turno esta en jaque.
 ```python
 chess = Chess()
 chess.setFen('4k3/8/5N2/8/8/8/8/4K3 b - - 0 1')
-print(chess.isCheck())  # True (caballo en f6 da jaque al rey negro)
+print(chess.isCheck())  # True
 ```
 
 #### `isCheckmate() -> bool`
 Indica si hay jaque mate.
 
 ```python
-# Mate del pastor
 chess = Chess()
-chess.play('e2-e4')
-chess.play('e7-e5')
-chess.play('f1-c4')
-chess.play('b8-c6')
-chess.play('d1-h5')
-chess.play('g8-f6')
+chess.play('e2-e4'); chess.play('e7-e5')
+chess.play('f1-c4'); chess.play('b8-c6')
+chess.play('d1-h5'); chess.play('g8-f6')
 chess.play('h5-f7')
 print(chess.isCheckmate())  # True
 ```
@@ -165,42 +161,24 @@ print(chess.isStalemate())  # True
 print(chess.isCheck())       # False
 ```
 
-> QUITAR METODO
-#### `isDraw() -> bool`
-Indica si hay tablas (regla 50 movimientos o material insuficiente).
+#### `isInsufficientMaterial() -> bool`
+Indica si hay material insuficiente para dar mate.
+
+Evalua: K vs K, K vs K+B, K vs K+N, K+B vs K+B (alfiles del mismo color de casilla).
 
 ```python
-# Material insuficiente (K vs K)
 chess = Chess()
 chess.setFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1')
-print(chess.isDraw())  # True
+print(chess.isInsufficientMaterial())  # True (K vs K)
 
-# Material insuficiente (K vs K+B)
 chess.setFen('4k3/8/8/8/8/8/8/4KB2 w - - 0 1')
-print(chess.isDraw())  # True
-
-# Regla de 50 movimientos
-chess.setFen('4k3/8/8/8/8/8/8/4KR2 w - - 99 50')
-chess.play('f1-f2')
-print(chess.isDraw())  # True
+print(chess.isInsufficientMaterial())  # True (K vs K+B)
 ```
 
-#### `isGameOver() -> bool`
-Indica si la partida ha terminado.
+### Metodos FEN
 
-```python
-chess = Chess()
-print(chess.isGameOver())  # False
-
-# Despues de mate
-chess.setFen('k7/RR6/8/8/8/8/8/4K3 b - - 0 1')
-print(chess.isGameOver())  # True (jaque mate)
-```
-
-### Metodos FEN/PGN
-
-#### `setFen(fen: str)`
-Carga una posicion desde notacion FEN.
+#### `setFen(fen)`
+Carga una posicion desde notacion FEN (4 a 6 campos standard).
 
 ```python
 chess = Chess()
@@ -210,7 +188,7 @@ print(chess.getTurn())       # 'w'
 ```
 
 #### `getFen() -> str`
-Exporta la posicion actual a notacion FEN.
+Exporta la posicion actual a notacion FEN completa (6 campos).
 
 ```python
 chess = Chess()
@@ -222,75 +200,39 @@ print(chess.getFen())
 # 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1'
 ```
 
-#### `getPgn(headers: dict = None) -> str`
-Exporta la partida completa a formato PGN.
-
-```python
-chess = Chess()
-chess.play('e2-e4')
-chess.play('e7-e5')
-chess.play('g1-f3')
-chess.play('b8-c6')
-
-pgn = chess.getPgn({'Event': 'Partida de ejemplo', 'White': 'Jugador1', 'Black': 'Jugador2'})
-print(pgn)
-# [Event "Partida de ejemplo"]
-# [Site "?"]
-# [Date "????.??.??"]
-# [Round "?"]
-# [White "Jugador1"]
-# [Black "Jugador2"]
-# [Result "*"]
-#
-# 1. e2-e4 e7-e5 2. g1-f3 b8-c6 *
-```
-
-#### `getHistory() -> list[tuple]`
-Retorna historial de movimientos en tuplas por turno.
-
-```python
-chess = Chess()
-chess.play('e2-e4')
-chess.play('e7-e5')
-chess.play('g1-f3')
-chess.play('b8-c6')
-
-print(chess.getHistory())
-# [('e2-e4', 'e7-e5'), ('g1-f3', 'b8-c6')]
-
-# Turno incompleto
-chess.play('f1-c4')
-print(chess.getHistory())
-# [('e2-e4', 'e7-e5'), ('g1-f3', 'b8-c6'), ('f1-c4', '')]
-```
-
 ### Callbacks
 
-Los callbacks se ejecutan automaticamente despues de cada llamada a `play()` cuando corresponda.
+Los callbacks se ejecutan automaticamente despues de cada llamada a `play()` exitosa.
+
+#### `onMove`
+Se dispara despues de cada movimiento valido con detalles.
 
 ```python
+def mi_handler(moveStr, captured, isPromotion, isCastling, isEnPassant):
+    print("Movimiento:", moveStr)
+    if captured:
+        print("Captura:", captured)
+
 chess = Chess()
+chess.onMove = mi_handler
+chess.play('e2-e4')
+# Movimiento: e2-e4
+```
 
-def mi_callback_jaque():
-    print("Jaque!")
+| Parametro | Tipo | Descripcion |
+|-----------|------|-------------|
+| `moveStr` | `str` | Movimiento ejecutado (ej: `'e2-e4'`, `'O-O'`) |
+| `captured` | `str` o `None` | Pieza capturada o None |
+| `isPromotion` | `bool` | True si fue promocion |
+| `isCastling` | `bool` | True si fue enroque |
+| `isEnPassant` | `bool` | True si fue captura al paso |
 
-def mi_callback_mate():
-    print("Jaque mate!")
+#### Callbacks de posicion
 
-def mi_callback_ahogado():
-    print("Ahogado!")
-
-def mi_callback_tablas():
-    print("Tablas!")
-
-def mi_callback_fin():
-    print("Partida terminada!")
-
-chess.onCheck = mi_callback_jaque
-chess.onCheckmate = mi_callback_mate
-chess.onStalemate = mi_callback_ahogado
-chess.onDraw = mi_callback_tablas
-chess.onGameOver = mi_callback_fin
+```python
+chess.onCheck = lambda: print("Jaque!")
+chess.onCheckmate = lambda: print("Jaque mate!")
+chess.onStalemate = lambda: print("Ahogado!")
 ```
 
 | Callback | Cuando se ejecuta |
@@ -298,8 +240,8 @@ chess.onGameOver = mi_callback_fin
 | `onCheck` | Cuando el jugador en turno queda en jaque |
 | `onCheckmate` | Cuando hay jaque mate |
 | `onStalemate` | Cuando hay ahogado |
-| `onDraw` | Cuando hay tablas |
-| `onGameOver` | Cuando la partida termina (cualquier razon) |
+
+**Orden de disparo**: `onMove` primero, luego el callback de posicion correspondiente.
 
 ### Representacion del Tablero
 
@@ -308,7 +250,6 @@ chess = Chess()
 print(chess)
 ```
 
-Salida:
 ```
   +---+---+---+---+---+---+---+---+
 8 | r | n | b | q | k | b | n | r |
@@ -333,121 +274,54 @@ Turn: White
 FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 ```
 
-## Ejemplos Completos
-
-### Partida Basica
+## Ejemplo Completo
 
 ```python
-from Chess import Chess
+from modules.chess import Chess
 
 chess = Chess()
 
-# Apertura italiana
-movimientos = ['e2-e4', 'e7-e5', 'g1-f3', 'b8-c6', 'f1-c4', 'f8-c5']
+# Registrar callbacks
+chess.onMove = lambda move, cap, prom, castle, ep: print("Move:", move)
+chess.onCheck = lambda: print("Check!")
+chess.onCheckmate = lambda: print("Checkmate!")
 
-for mov in movimientos:
-    if chess.play(mov):
-        print(f"Movimiento {mov} ejecutado")
-    else:
-        print(f"Movimiento {mov} invalido")
+# Motor de reglas puro
+chess.play('e2-e4')          # True, dispara onMove
+chess.getLegalMoves('d7')    # ['d7-d6', 'd7-d5']
+chess.getTurn()              # 'b'
+chess.isCheck()              # False
+chess.getPiece('e4')         # 'P'
+chess.getBoard()             # lista de 64 caracteres
+chess.getFen()               # FEN completo con 6 campos
 
-print(chess)
-print(f"FEN: {chess.getFen()}")
+# Material insuficiente
+chess.setFen("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
+chess.isInsufficientMaterial()  # True (K vs K)
 ```
 
-### Mate del Pastor
-
-```python
-from Chess import Chess
-
-chess = Chess()
-
-# Mate del pastor (Scholar's mate)
-movimientos = ['e2-e4', 'e7-e5', 'f1-c4', 'b8-c6', 'd1-h5', 'g8-f6', 'h5-f7']
-
-for mov in movimientos:
-    chess.play(mov)
-
-print(f"Jaque mate: {chess.isCheckmate()}")  # True
-print(f"PGN: {chess.getPgn()}")
-```
-
-### Usando Callbacks
-
-```python
-from Chess import Chess
-
-chess = Chess()
-
-def alerta_jaque():
-    print("ATENCION: Rey en jaque!")
-
-def partida_terminada():
-    if chess.isCheckmate():
-        ganador = "Negras" if chess.getTurn() == 'w' else "Blancas"
-        print(f"Jaque mate! Ganan las {ganador}")
-    elif chess.isStalemate():
-        print("Ahogado - Tablas")
-    elif chess.isDraw():
-        print("Tablas por material insuficiente o regla de 50 movimientos")
-
-chess.onCheck = alerta_jaque
-chess.onGameOver = partida_terminada
-
-# Jugar partida...
-```
-
-### Deshacer Movimientos
-
-```python
-from Chess import Chess
-
-chess = Chess()
-
-chess.play('e2-e4')
-chess.play('e7-e5')
-chess.play('d2-d4')
-
-print("Posicion actual:")
-print(chess)
-
-# Deshacer ultimo movimiento
-chess.undo()
-print("Despues de undo:")
-print(chess)
-
-# Deshacer todos los movimientos
-while chess.undo():
-    pass
-
-print("Posicion inicial restaurada:")
-print(chess.getFen())
-```
+> **Nota**: Para historial, undo, piezas capturadas, PGN, deteccion de fin de partida y relojes, usar `ChessGame`.
 
 ## Pruebas
 
-Las pruebas se ejecutan con pytest desde la raiz del proyecto:
-
 ```bash
-pytest tests/modules/chess
+uv run pytest tests/modules/chess
 ```
 
 Las pruebas cubren:
 - Movimientos basicos de todas las piezas
 - Movimientos especiales (enroque, promocion, en passant)
 - Deteccion de jaque y jaque mate
-- Deteccion de tablas y ahogado
-- Funcionalidad FEN, PGN, historial y undo
+- Deteccion de ahogado y material insuficiente
+- Funcionalidad FEN, getBoard y callbacks (onMove, onCheck, etc.)
 
 ## Notas Tecnicas
 
 - Representacion interna del tablero: lista de 64 caracteres (indice 0 = a1, indice 63 = h8)
+- `halfmoveClock` y `fullmoveNumber` se mantienen internamente como parte del estado FEN
 - Optimizado para uso de memoria en ESP32
 - Compatible con MicroPython
 
 ## Version
 
-1.0 - Enero 2025
-
-
-notacion algebraica estandar
+2.0 - Febrero 2026

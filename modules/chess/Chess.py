@@ -1,13 +1,14 @@
 """
 Modulo de ajedrez para ESP32 (MicroPython).
-Valida movimientos y gestiona el estado de la partida.
+Motor puro de reglas: valida y ejecuta movimientos.
+No gestiona historial, undo, piezas capturadas, PGN ni fin de partida.
 Optimizado para entornos con poca memoria.
 """
 
 
 class Chess:
     """
-    Gestor de partida con validacion de movimientos y seguimiento del estado.
+    Motor de reglas de ajedrez con validacion de movimientos.
 
     Representacion del tablero: lista de 64 caracteres
     Indice 0 = a1, indice 63 = h8
@@ -32,7 +33,7 @@ class Chess:
 
     def __init__(self, debug=False):
         """
-        Inicializa una nueva partida de ajedrez.
+        Inicializa el motor de reglas de ajedrez.
 
         Args:
             debug: Habilita modo debug para mensajes de diagnostico
@@ -42,23 +43,18 @@ class Chess:
         self._turn = None  # 'w' o 'b'
         self._castlingRights = None  # formato 'KQkq'
         self._enPassantSquare = None  # ej: 'e3' o None
-        self._halfmoveClock = None  # regla de 50 movimientos
+        self._halfmoveClock = None  # contador para FEN campo 5
         self._fullmoveNumber = None
-        self._history = []  # Lista de tuplas [(mov_blancas, mov_negras), ...]
-        self._moveStack = []  # Pila de estados para deshacer
-        self._currentTurnMove = None  # Movimiento de blancas pendiente de negras
-        self._capturedPieces = None  # Piezas capturadas {"w": [], "b": []}
 
         # Callbacks
         self._onCheck = None
         self._onCheckmate = None
         self._onStalemate = None
-        self._onDraw = None
-        self._onGameOver = None
+        self._onMove = None
 
         self.reset()
 
-    # ==================== Setters de propiedades para callbacks ====================
+    # ==================== Propiedades para callbacks ====================
 
     @property
     def onCheck(self):
@@ -85,20 +81,12 @@ class Chess:
         self._onStalemate = callback
 
     @property
-    def onDraw(self):
-        return self._onDraw
+    def onMove(self):
+        return self._onMove
 
-    @onDraw.setter
-    def onDraw(self, callback):
-        self._onDraw = callback
-
-    @property
-    def onGameOver(self):
-        return self._onGameOver
-
-    @onGameOver.setter
-    def onGameOver(self, callback):
-        self._onGameOver = callback
+    @onMove.setter
+    def onMove(self, callback):
+        self._onMove = callback
 
     @property
     def debug(self):
@@ -177,36 +165,6 @@ class Chess:
             if piece == king:
                 return i
         return -1
-
-    def _saveState(self):
-        """Guarda el estado actual para deshacer."""
-        state = {
-            "board": self._board[:],
-            "turn": self._turn,
-            "castlingRights": self._castlingRights,
-            "enPassantSquare": self._enPassantSquare,
-            "halfmoveClock": self._halfmoveClock,
-            "fullmoveNumber": self._fullmoveNumber,
-            "history": [tuple(t) for t in self._history],
-            "currentTurnMove": self._currentTurnMove,
-            "capturedPieces": {
-                "w": self._capturedPieces["w"][:],
-                "b": self._capturedPieces["b"][:],
-            },
-        }
-        self._moveStack.append(state)
-
-    def _restoreState(self, state):
-        """Restaura el estado del juego desde un estado guardado."""
-        self._board = state["board"]
-        self._turn = state["turn"]
-        self._castlingRights = state["castlingRights"]
-        self._enPassantSquare = state["enPassantSquare"]
-        self._halfmoveClock = state["halfmoveClock"]
-        self._fullmoveNumber = state["fullmoveNumber"]
-        self._history = [list(t) for t in state["history"]]
-        self._currentTurnMove = state["currentTurnMove"]
-        self._capturedPieces = state["capturedPieces"]
 
     # ==================== Deteccion de ataques ====================
 
@@ -596,26 +554,23 @@ class Chess:
     # ==================== Metodos publicos ====================
 
     def reset(self):
-        """Reinicia la partida a la posicion inicial."""
+        """Reinicia el tablero a la posicion inicial."""
         self._board = self.INITIAL_BOARD[:]
         self._turn = "w"
         self._castlingRights = "KQkq"
         self._enPassantSquare = None
         self._halfmoveClock = 0
         self._fullmoveNumber = 1
-        self._history = []
-        self._moveStack = []
-        self._currentTurnMove = None
-        self._capturedPieces = {"w": [], "b": []}
         self._log("Game reset to initial position")
 
     def play(self, move):
         """
-        Ejecuta un movimiento en notacion algebraica.
+        Valida y ejecuta un movimiento. Retorna True si exitoso, False si invalido.
+        Dispara callbacks (onMove, onCheck, onCheckmate, onStalemate).
+        No registra historial ni guarda estado para undo.
 
         Args:
             move: Formato 'e2-e4', 'O-O', 'O-O-O', o 'e7-e8=Q'
-                Nota: las capturas usan '-' (no 'x').
 
         Returns:
             bool: True si el movimiento se ejecuto, False si es invalido
@@ -647,14 +602,8 @@ class Chess:
             self._log(f"Illegal move: {move}")
             return False
 
-        # Guardar estado para deshacer
-        self._saveState()
-
         # Ejecutar el movimiento
         self._executeMove(fromIndex, toIndex, promotion, move)
-
-        # Disparar callbacks
-        self._triggerCallbacks()
 
         self._log(f"Move executed: {move}")
         return True
@@ -698,9 +647,6 @@ class Chess:
             )
             return False
 
-        # Guardar estado para deshacer
-        self._saveState()
-
         isWhite = color == "w"
         rank = 0 if isWhite else 7
 
@@ -734,13 +680,14 @@ class Chess:
         # Actualizar relojes
         self._halfmoveClock += 1
 
-        # Registrar movimiento y cambiar turno
+        # Cambiar turno
         moveStr = "O-O" if kingSide else "O-O-O"
-        self._recordMove(moveStr)
         self._switchTurn()
 
         # Disparar callbacks
-        self._triggerCallbacks()
+        if self._onMove:
+            self._onMove(moveStr, None, False, True, False)
+        self._triggerPositionCallbacks()
 
         self._log(f"Castling executed: {moveStr}")
         return True
@@ -754,26 +701,26 @@ class Chess:
 
         # Manejar captura en passant
         isEnPassant = False
+        captured = None
         if pieceType == "P" and self._indexToSquare(toIndex) == self._enPassantSquare:
             isEnPassant = True
             capturedPawnRank = 4 if isWhite else 3
             capturedPawnIndex = capturedPawnRank * 8 + self._getFile(toIndex)
+            captured = self._board[capturedPawnIndex]
             self._board[capturedPawnIndex] = " "
 
-        # Registrar pieza capturada
-        captureColor = "w" if isWhite else "b"
+        # Determinar pieza capturada (captura normal)
         if targetPiece != " ":
-            self._capturedPieces[captureColor].append(targetPiece)
-        elif isEnPassant:
-            capturedPawn = "p" if isWhite else "P"
-            self._capturedPieces[captureColor].append(capturedPawn)
+            captured = targetPiece
 
         # Mover la pieza
         self._board[toIndex] = piece
         self._board[fromIndex] = " "
 
         # Manejar promocion
+        isPromotion = False
         if pieceType == "P" and self._getRank(toIndex) == (7 if isWhite else 0):
+            isPromotion = True
             if promotion:
                 self._board[toIndex] = (
                     promotion.upper() if isWhite else promotion.lower()
@@ -802,9 +749,15 @@ class Chess:
         else:
             self._halfmoveClock += 1
 
-        # Registrar movimiento y cambiar turno
-        self._recordMove(moveStr)
+        # Cambiar turno
         self._switchTurn()
+
+        # Disparar callback onMove
+        if self._onMove:
+            self._onMove(moveStr, captured, isPromotion, False, isEnPassant)
+
+        # Disparar callbacks de posicion
+        self._triggerPositionCallbacks()
 
     def _updateCastlingRights(self, fromIndex, toIndex, piece):
         """Actualiza derechos de enroque segun el movimiento."""
@@ -833,17 +786,6 @@ class Chess:
             if fromIndex == pos or toIndex == pos:
                 self._castlingRights = self._castlingRights.replace(right, "")
 
-    def _recordMove(self, moveStr):
-        """Registra el movimiento en el historial."""
-        if self._turn == "w":
-            self._currentTurnMove = moveStr
-        else:
-            if self._currentTurnMove is not None:
-                self._history.append([self._currentTurnMove, moveStr])
-            else:
-                self._history.append(["", moveStr])
-            self._currentTurnMove = None
-
     def _switchTurn(self):
         """Cambia al turno del otro jugador."""
         if self._turn == "w":
@@ -852,23 +794,14 @@ class Chess:
             self._turn = "w"
             self._fullmoveNumber += 1
 
-    def _triggerCallbacks(self):
-        """Dispara callbacks segun el estado de la partida."""
+    def _triggerPositionCallbacks(self):
+        """Dispara callbacks segun el estado de la posicion."""
         if self.isCheckmate():
             if self._onCheckmate:
                 self._onCheckmate()
-            if self._onGameOver:
-                self._onGameOver()
         elif self.isStalemate():
             if self._onStalemate:
                 self._onStalemate()
-            if self._onGameOver:
-                self._onGameOver()
-        elif self.isDraw():
-            if self._onDraw:
-                self._onDraw()
-            if self._onGameOver:
-                self._onGameOver()
         elif self.isCheck():
             if self._onCheck:
                 self._onCheck()
@@ -938,41 +871,15 @@ class Chess:
             return " "
         return self._board[index]
 
-    def undo(self):
+    def getBoard(self):
         """
-        Deshace el ultimo movimiento.
+        Retorna la representacion del tablero como lista de 64 caracteres.
+        Indice 0 = a1, indice 63 = h8.
 
         Returns:
-            bool: True si se deshizo, False si no hay movimientos
+            list: Lista de 64 caracteres (referencia directa al tablero interno)
         """
-        if not self._moveStack:
-            self._log("No moves to undo")
-            return False
-
-        state = self._moveStack.pop()
-        self._restoreState(state)
-        self._log("Move undone")
-        return True
-
-    def getCapturedPieces(self):
-        """
-        Obtiene las piezas capturadas durante la partida.
-
-        Returns:
-            dict: {"w": str, "b": str} donde "w" contiene piezas capturadas
-                por blancas (piezas negras, minusculas) y "b" piezas capturadas
-                por negras (piezas blancas, mayusculas).
-                Ordenadas por valor descendente (dama, torre, alfil, caballo, peon).
-        """
-        order = "qrbnp"
-
-        def sortKey(c):
-            cl = c.lower()
-            return order.index(cl) if cl in order else 5
-
-        w = "".join(sorted(self._capturedPieces["w"], key=sortKey))
-        b = "".join(sorted(self._capturedPieces["b"], key=sortKey))
-        return {"w": w, "b": b}
+        return self._board
 
     def getTurn(self):
         """
@@ -1028,22 +935,14 @@ class Chess:
                 return True
         return False
 
-    def isDraw(self):
+    def isInsufficientMaterial(self):
         """
-        Verifica si la partida es tablas (regla de 50 o material insuficiente).
+        Verifica material insuficiente para dar mate.
+        K vs K, K vs K+B, K vs K+N, K+B vs K+B (mismo color casilla).
 
         Returns:
-            bool: True si es tablas
+            bool: True si el material es insuficiente
         """
-        # Regla de 50 movimientos
-        if self._halfmoveClock >= 100:  # 100 medios = 50 movimientos completos
-            return True
-
-        # Material insuficiente
-        return self._isInsufficientMaterial()
-
-    def _isInsufficientMaterial(self):
-        """Verifica material insuficiente para dar mate."""
         whitePieces = []
         blackPieces = []
 
@@ -1088,23 +987,14 @@ class Chess:
 
         return False
 
-    def isGameOver(self):
-        """
-        Verifica si la partida termino.
-
-        Returns:
-            bool: True si la partida termino
-        """
-        return self.isCheckmate() or self.isStalemate() or self.isDraw()
-
-    # ==================== Metodos FEN/PGN ====================
+    # ==================== Metodos FEN ====================
 
     def setFen(self, fen):
         """
         Carga una posicion desde notacion FEN.
 
         Args:
-            fen: string FEN
+            fen: string FEN (4 a 6 campos)
         """
         parts = fen.split()
         if len(parts) < 4:
@@ -1146,17 +1036,11 @@ class Chess:
         # Parsear numero de movimiento completo
         self._fullmoveNumber = int(parts[5]) if len(parts) > 5 else 1
 
-        # Reiniciar historial y pila de movimientos
-        self._history = []
-        self._moveStack = []
-        self._currentTurnMove = None
-        self._capturedPieces = {"w": [], "b": []}
-
         self._log(f"Position loaded from FEN: {fen}")
 
     def getFen(self):
         """
-        Exporta la posicion actual a notacion FEN.
+        Exporta la posicion actual a notacion FEN (6 campos standard).
 
         Returns:
             str: string FEN
@@ -1199,77 +1083,6 @@ class Chess:
         fenParts.append(str(self._fullmoveNumber))
 
         return " ".join(fenParts)
-
-    def getPgn(self, headers=None):
-        """
-        Exporta la partida a formato PGN.
-
-        Args:
-            headers: dict opcional con cabeceras PGN
-
-        Returns:
-            str: string PGN
-        """
-        pgn = ""
-
-        # Cabeceras por defecto
-        defaultHeaders = {
-            "Event": "?",
-            "Site": "?",
-            "Date": "????.??.??",
-            "Round": "?",
-            "White": "?",
-            "Black": "?",
-            "Result": "*",
-        }
-
-        if headers:
-            defaultHeaders.update(headers)
-
-        # Determinar resultado
-        if self.isCheckmate():
-            defaultHeaders["Result"] = "0-1" if self._turn == "w" else "1-0"
-        elif self.isStalemate() or self.isDraw():
-            defaultHeaders["Result"] = "1/2-1/2"
-
-        # Escribir cabeceras
-        for key, value in defaultHeaders.items():
-            pgn += f'[{key} "{value}"]\n'
-        pgn += "\n"
-
-        # Escribir movimientos
-        moveText = ""
-        for i, (whiteMove, blackMove) in enumerate(self._history):
-            moveNum = i + 1
-            if whiteMove:
-                moveText += f"{moveNum}. {whiteMove} "
-            if blackMove:
-                moveText += f"{blackMove} "
-
-        # Agregar turno incompleto si existe
-        if self._currentTurnMove:
-            moveNum = len(self._history) + 1
-            moveText += f"{moveNum}. {self._currentTurnMove} "
-
-        pgn += moveText.strip()
-        pgn += " " + defaultHeaders["Result"]
-
-        return pgn
-
-    def getHistory(self):
-        """
-        Devuelve el historial de movimientos.
-
-        Returns:
-            list: Lista de tuplas [(mov_blancas, mov_negras), ...]
-        """
-        result = [tuple(moves) for moves in self._history]
-
-        # Agregar turno incompleto si existe
-        if self._currentTurnMove:
-            result.append((self._currentTurnMove, ""))
-
-        return result
 
     # ==================== Representacion en texto ====================
 

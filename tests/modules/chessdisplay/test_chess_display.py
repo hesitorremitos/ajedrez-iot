@@ -1,12 +1,16 @@
-"""Tests para el modulo ChessDisplay."""
+"""Tests para el modulo ChessDisplay v2.0."""
 
 import sys
 import pytest
-from modules.chess import Chess
 from modules.chessdisplay.ChessDisplay import _PIECE_BITMAPS, _PIECE_EXPANDED
 
 # Obtener referencia al modulo (no la clase) para parchear Pin, I2C, SSD1306_I2C
 cd_module = sys.modules["modules.chessdisplay.ChessDisplay"]
+
+# Posicion inicial como cadena de 64 caracteres (indice 0 = a1, indice 63 = h8)
+INITIAL_BOARD = "RNBQKBNRPPPPPPPP                                pppppppprnbqkbnr"
+
+EMPTY_BOARD = " " * 64
 
 
 # ==================== Mock classes ====================
@@ -95,15 +99,10 @@ def patch_hardware():
 
 
 @pytest.fixture
-def chess():
-    return Chess()
-
-
-@pytest.fixture
-def display(chess):
+def display():
     from modules.chessdisplay import ChessDisplay
 
-    return ChessDisplay(chess, sda=21, scl=22)
+    return ChessDisplay(sda=21, scl=22)
 
 
 # ==================== Helper functions ====================
@@ -114,29 +113,13 @@ def get_mock_display(chess_display):
     return chess_display._display
 
 
-def find_text_call(mock_display, y):
-    """Busca una llamada a text() por posicion Y."""
-    for call in mock_display.textCalls:
-        if call["y"] == y:
-            return call
-    return None
-
-
-def find_text_containing(mock_display, substring):
-    """Busca una llamada a text() que contenga el substring."""
-    for call in mock_display.textCalls:
-        if substring in call["text"]:
-            return call
-    return None
-
-
 # ==================== AC-01: Crear instancia con parametros requeridos ====================
 
 
-def test_create_with_required_params(chess):
+def test_create_with_required_params():
     from modules.chessdisplay import ChessDisplay
 
-    d = ChessDisplay(chess, sda=21, scl=22)
+    d = ChessDisplay(sda=21, scl=22)
     assert d.flipped is False
     assert d._display.addr == 0x3C
     assert d._display.i2c.id == 0
@@ -145,10 +128,10 @@ def test_create_with_required_params(chess):
 # ==================== AC-02: Crear instancia con todos los parametros ====================
 
 
-def test_create_with_all_params(chess):
+def test_create_with_all_params():
     from modules.chessdisplay import ChessDisplay
 
-    d = ChessDisplay(chess, sda=21, scl=22, flipped=True, address=0x3D, i2cId=1)
+    d = ChessDisplay(sda=21, scl=22, flipped=True, address=0x3D, i2cId=1)
     assert d.flipped is True
     assert d._display.addr == 0x3D
     assert d._display.i2c.id == 1
@@ -159,43 +142,31 @@ def test_create_with_all_params(chess):
 # ==================== AC-03: render() dibuja tablero en posicion inicial ====================
 
 
-def test_render_initial_position(display, chess):
+def test_render_initial_position(display):
+    display.setTable(INITIAL_BOARD)
     display.render()
     mock = get_mock_display(display)
 
     # Verifica que show() fue llamado
     assert mock.showCount == 1
 
-    # Verifica panel: Turn W, Mov 1
-    turnCall = find_text_call(mock, 0)
-    assert turnCall is not None
-    assert "W" in turnCall["text"]
-
-    movCall = find_text_call(mock, 8)
-    assert movCall is not None
-    assert "1" in movCall["text"]
-
-    # No debe haber ultimo movimiento (linea y=16 no deberia existir o estar vacia)
-    lastMoveCall = find_text_call(mock, 16)
-    assert lastMoveCall is None
+    # Verifica que no hay llamadas a text() (panel removido en v2.0)
+    assert len(mock.textCalls) == 0
 
 
-# ==================== AC-04: render() actualiza despues de movimiento ====================
+# ==================== AC-04: render() actualiza despues de mover peon ====================
 
 
-def test_render_after_move(display, chess):
-    chess.play("e2-e4")
+def test_render_after_pawn_move(display):
+    # Board con peon blanco en e4 en lugar de e2
+    board = list(INITIAL_BOARD)
+    # e2 = rank 1, file 4 = index 12
+    board[12] = " "
+    # e4 = rank 3, file 4 = index 28
+    board[28] = "P"
+    display.setTable("".join(board))
     display.render()
     mock = get_mock_display(display)
-
-    # Turn B
-    turnCall = find_text_call(mock, 0)
-    assert "B" in turnCall["text"]
-
-    # Ultimo movimiento e2-e4
-    lastMoveCall = find_text_call(mock, 16)
-    assert lastMoveCall is not None
-    assert "e2-e4" in lastMoveCall["text"]
 
     # El peon debe estar en e4 (file=4, rank=3) y no en e2 (file=4, rank=1)
     # En posicion normal (flipped=False), e4 esta en sx=4*8=32, sy=(7-3)*8=32
@@ -208,80 +179,50 @@ def test_render_after_move(display, chess):
     assert any(p == 1 for p in e4_flat), "e4 debe tener pixels de pieza"
 
     # e2 no debe tener pieza (casilla oscura o clara vacia)
-    # e2: file=4, rank=1 → (4+1)%2=1 → casilla clara → todo ceros
+    # e2: file=4, rank=1 -> (4+1)%2=1 -> casilla clara -> todo ceros
     e2_flat = [p for row in e2_region for p in row]
     assert all(p == 0 for p in e2_flat), "e2 debe estar vacia (casilla clara)"
 
 
-# ==================== AC-05: render() muestra estado de jaque ====================
+# ==================== AC-05: setTable() almacena datos ====================
 
 
-def test_render_shows_check(display, chess):
-    # Posicion de jaque directo: dama negra en h4 da jaque al rey blanco en e1
-    chess.setFen("4k3/8/8/8/7q/8/8/4K3 w - - 0 1")
-    assert chess.isCheck() is True, "La posicion debe ser jaque"
+def test_set_table_stores_data(display):
+    display.setTable(INITIAL_BOARD)
+    assert display._board == INITIAL_BOARD
+
+
+def test_set_table_overwrites_data(display):
+    display.setTable(INITIAL_BOARD)
+    display.setTable(EMPTY_BOARD)
+    assert display._board == EMPTY_BOARD
+
+
+# ==================== AC-06: setTable() no llama a show ====================
+
+
+def test_set_table_does_not_call_show(display):
+    mock = get_mock_display(display)
+    display.setTable(INITIAL_BOARD)
+    assert mock.showCount == 0
+
+
+# ==================== AC-07: render() sin setTable() dibuja tablero vacio ====================
+
+
+def test_render_without_set_table_draws_empty_board(display):
     display.render()
     mock = get_mock_display(display)
+    assert mock.showCount == 1
 
-    statusCall = find_text_containing(mock, "CHECK")
-    assert statusCall is not None
-
-
-# ==================== AC-06: render() muestra estado de jaque mate ====================
-
-
-def test_render_shows_checkmate(display, chess):
-    # Mate del pastor
-    chess.play("e2-e4")
-    chess.play("e7-e5")
-    chess.play("f1-c4")
-    chess.play("b8-c6")
-    chess.play("d1-h5")
-    chess.play("g8-f6")
-    chess.play("h5-f7")  # Jaque mate
-    display.render()
-    mock = get_mock_display(display)
-
-    statusCall = find_text_containing(mock, "MATE")
-    assert statusCall is not None
+    # Sin piezas, solo dithering en casillas oscuras
+    # b1 (file=1, rank=0): casilla clara -> todo ceros (sin piezas)
+    b1_region = mock.getRegion(8, 56, 8, 8)
+    for row in b1_region:
+        assert all(p == 0 for p in row), "b1 sin pieza debe estar vacia"
 
 
-# ==================== AC-07: render() muestra estado de tablas ====================
-
-
-def test_render_shows_draw(display, chess):
-    # Material insuficiente: K vs K
-    chess.setFen("8/8/8/4k3/8/8/8/4K3 w - - 0 1")
-    display.render()
-    mock = get_mock_display(display)
-
-    statusCall = find_text_containing(mock, "DRAW")
-    assert statusCall is not None
-
-
-# ==================== AC-08: render() muestra estado de ahogado ====================
-
-
-def test_render_shows_stalemate(display, chess):
-    # Posicion de ahogado clasica
-    chess.setFen("k7/8/1K6/8/8/8/8/8 b - - 0 1")
-    # Negro no tiene movimientos legales pero no esta en jaque
-    # Verificar si es stalemate
-    if chess.isStalemate():
-        display.render()
-        mock = get_mock_display(display)
-        statusCall = find_text_containing(mock, "STALE")
-        assert statusCall is not None
-    else:
-        # Usar posicion alternativa de stalemate
-        chess.setFen("5k2/5P2/5K2/8/8/8/8/8 b - - 0 1")
-        display.render()
-        mock = get_mock_display(display)
-        statusCall = find_text_containing(mock, "STALE")
-        assert statusCall is not None
-
-
-# ==================== AC-09: flip() invierte orientacion ====================
+# ==================== AC-08: flip() invierte orientacion ====================
 
 
 def test_flip_changes_false_to_true(display):
@@ -290,19 +231,19 @@ def test_flip_changes_false_to_true(display):
     assert display.flipped is True
 
 
-# ==================== AC-10: flip() es toggle ====================
+# ==================== AC-09: flip() es toggle ====================
 
 
-def test_flip_changes_true_to_false(chess):
+def test_flip_changes_true_to_false():
     from modules.chessdisplay import ChessDisplay
 
-    d = ChessDisplay(chess, sda=21, scl=22, flipped=True)
+    d = ChessDisplay(sda=21, scl=22, flipped=True)
     assert d.flipped is True
     d.flip()
     assert d.flipped is False
 
 
-# ==================== AC-11: flip() no llama a render ====================
+# ==================== AC-10: flip() no llama a render ====================
 
 
 def test_flip_does_not_call_show(display):
@@ -311,10 +252,11 @@ def test_flip_does_not_call_show(display):
     assert mock.showCount == 0
 
 
-# ==================== AC-12: Orientacion flipped=False muestra blancas abajo ====================
+# ==================== AC-11: Orientacion flipped=False muestra blancas abajo ====================
 
 
-def test_flipped_false_white_at_bottom(display, chess):
+def test_flipped_false_white_at_bottom(display):
+    display.setTable(INITIAL_BOARD)
     display.render()
     mock = get_mock_display(display)
 
@@ -322,8 +264,7 @@ def test_flipped_false_white_at_bottom(display, chess):
     # La torre blanca en a1 (file=0, rank=0) esta en sx=0, sy=56
     a1_region = mock.getRegion(0, 56, 8, 8)
     a1_flat = [p for row in a1_region for p in row]
-    # a1 es casilla oscura (0+0)%2==0, pieza blanca → pixels 0 sobre fondo 1
-    # Debe haber una mezcla de 0s y 1s (pieza sobre casilla oscura)
+    # a1 es casilla oscura (0+0)%2==0, pieza blanca -> pixels sobre fondo limpio
     assert any(p == 0 for p in a1_flat) and any(p == 1 for p in a1_flat), (
         "a1 debe tener pieza blanca sobre casilla oscura"
     )
@@ -331,26 +272,25 @@ def test_flipped_false_white_at_bottom(display, chess):
     # La torre negra en a8 (file=0, rank=7) esta en sx=0, sy=(7-7)*8=0
     a8_region = mock.getRegion(0, 0, 8, 8)
     a8_flat = [p for row in a8_region for p in row]
-    # a8 es casilla clara (0+7)%2==1, pieza negra → pixels 1 (outline) sobre fondo 0
+    # a8 es casilla clara (0+7)%2==1, pieza negra -> outline pixels ON
     assert any(p == 1 for p in a8_flat), "a8 debe tener pieza negra"
 
 
-# ==================== AC-13: Orientacion flipped=True muestra negras abajo ====================
+# ==================== AC-12: Orientacion flipped=True muestra negras abajo ====================
 
 
-def test_flipped_true_black_at_bottom(chess):
+def test_flipped_true_black_at_bottom():
     from modules.chessdisplay import ChessDisplay
 
-    d = ChessDisplay(chess, sda=21, scl=22, flipped=True)
+    d = ChessDisplay(sda=21, scl=22, flipped=True)
+    d.setTable(INITIAL_BOARD)
     d.render()
     mock = get_mock_display(d)
 
     # Con flipped=True, rank 7 (fila 8, negras) se dibuja en sy=7*8=56
     # La torre negra en a8 (file=0, rank=7) esta en sx=(7-0)*8=56, sy=7*8=56
-    # (flipped invierte file: sx=(7-file)*8, sy=rank*8)
     a8_region = mock.getRegion(56, 56, 8, 8)
     a8_flat = [p for row in a8_region for p in row]
-    # a8: file=0, rank=7, isDark=(0+7)%2==1 → casilla clara, pieza negra → outline pixels ON
     assert any(p == 1 for p in a8_flat), "a8 (negra abajo) debe tener pieza"
 
     # La torre blanca en a1 (file=0, rank=0) esta en sx=(7-0)*8=56, sy=0*8=0
@@ -361,50 +301,7 @@ def test_flipped_true_black_at_bottom(chess):
     )
 
 
-# ==================== AC-14: render() muestra piezas capturadas ====================
-
-
-def test_render_shows_captured_pieces(display, chess):
-    # Italian game con capturas
-    chess.play("e2-e4")
-    chess.play("e7-e5")
-    chess.play("d2-d4")
-    chess.play("e5-d4")  # Peon negro captura peon blanco
-    chess.play("d1-d4")  # Dama blanca captura peon negro
-
-    display.render()
-    mock = get_mock_display(display)
-
-    # Linea 6 (y=48): capturadas por blancas → peon negro 'p'
-    captW = find_text_call(mock, 48)
-    assert captW is not None
-    assert "p" in captW["text"]
-
-    # Linea 7 (y=56): capturadas por negras → peon blanco 'P'
-    captB = find_text_call(mock, 56)
-    assert captB is not None
-    assert "P" in captB["text"]
-
-
-# ==================== AC-15: render() con posicion inicial sin capturas ====================
-
-
-def test_render_initial_no_captures_no_last_move(display, chess):
-    display.render()
-    mock = get_mock_display(display)
-
-    # Sin ultimo movimiento
-    lastMoveCall = find_text_call(mock, 16)
-    assert lastMoveCall is None
-
-    # Sin capturadas (lineas 48 y 56 no deben tener text con piezas)
-    captW = find_text_call(mock, 48)
-    captB = find_text_call(mock, 56)
-    assert captW is None
-    assert captB is None
-
-
-# ==================== AC-16: Propiedad flipped es legible y escribible ====================
+# ==================== AC-13: Propiedad flipped es legible y escribible ====================
 
 
 def test_flipped_property_read_write(display):
@@ -415,21 +312,13 @@ def test_flipped_property_read_write(display):
     assert display.flipped is False
 
 
-# ==================== AC-17: Piezas blancas y negras son visualmente distinguibles ====================
+# ==================== AC-14: Piezas blancas y negras son visualmente distinguibles ====================
 
 
-def test_white_black_pieces_distinguishable(display, chess):
-    # Posicion con torre blanca en a1 y torre negra en a8
-    # a1: casilla oscura, torre blanca (filled bitmap, color=0)
-    # b1: casilla clara, caballo blanco (filled bitmap, color=1)
-    # a8: casilla clara, torre negra (outline bitmap, color=1)
-    # b8: casilla oscura, caballo negro (outline bitmap, color=0)
+def test_white_black_pieces_distinguishable(display):
+    display.setTable(INITIAL_BOARD)
     display.render()
-    mock = get_mock_display(display)
 
-    # Torre blanca en a1 vs torre negra en a8
-    # Ambas en casillas de diferente color, pero la comparacion de bitmaps debe
-    # mostrar diferencia entre filled y outline
     # Comparar los bitmaps directamente
     rook_filled = _PIECE_BITMAPS["R"]
     rook_outline = _PIECE_EXPANDED["R"]
@@ -444,40 +333,35 @@ def test_white_black_pieces_distinguishable(display, chess):
         )
 
 
-# ==================== AC-18: Patron ajedrezado correcto ====================
+# ==================== AC-15: Patron ajedrezado correcto ====================
 
 
-def test_checkered_pattern_correct(display, chess):
+def test_checkered_pattern_correct(display):
     # Usar tablero vacio para verificar solo el patron
-    chess.setFen("8/8/8/8/8/8/8/8 w - - 0 1")
+    display.setTable(EMPTY_BOARD)
     display.render()
     mock = get_mock_display(display)
 
-    # a1 (file=0, rank=0): isDark = (0+0)%2==0 → oscura (patron dithering)
+    # a1 (file=0, rank=0): isDark = (0+0)%2==0 -> oscura (patron dithering)
     # En pantalla con flipped=False: sx=0, sy=(7-0)*8=56
-    # El patron dithering alterna pixels: filas pares 0xAA, filas impares 0x55
     a1_region = mock.getRegion(0, 56, 8, 8)
     a1_flat = [p for row in a1_region for p in row]
-    # Debe tener mezcla de 0s y 1s (dithering), exactamente 50% de cada uno
     count_ones = sum(a1_flat)
     assert count_ones == 32, (
         "Casilla oscura debe tener patron dithering (32 pixels encendidos)"
     )
 
-    # b1 (file=1, rank=0): isDark = (1+0)%2==1 → clara (pixels=0)
-    # sx=8, sy=56
+    # b1 (file=1, rank=0): isDark = (1+0)%2==1 -> clara (pixels=0)
     b1_region = mock.getRegion(8, 56, 8, 8)
     for row in b1_region:
         assert all(p == 0 for p in row), "b1 debe ser casilla clara (todo 0s)"
 
-    # a2 (file=0, rank=1): isDark = (0+1)%2==1 → clara
-    # sx=0, sy=(7-1)*8=48
+    # a2 (file=0, rank=1): isDark = (0+1)%2==1 -> clara
     a2_region = mock.getRegion(0, 48, 8, 8)
     for row in a2_region:
         assert all(p == 0 for p in row), "a2 debe ser casilla clara (todo 0s)"
 
-    # b2 (file=1, rank=1): isDark = (1+1)%2==0 → oscura (patron dithering)
-    # sx=8, sy=48
+    # b2 (file=1, rank=1): isDark = (1+1)%2==0 -> oscura (patron dithering)
     b2_region = mock.getRegion(8, 48, 8, 8)
     b2_flat = [p for row in b2_region for p in row]
     count_ones = sum(b2_flat)
@@ -496,9 +380,14 @@ def test_render_calls_fill_and_show(display):
     assert mock.showCount == 1
 
 
-def test_multiple_renders(display, chess):
+def test_multiple_renders(display):
+    display.setTable(INITIAL_BOARD)
     display.render()
-    chess.play("e2-e4")
+    # Simular movimiento actualizando tablero
+    board = list(INITIAL_BOARD)
+    board[12] = " "  # e2 vacio
+    board[28] = "P"  # e4 peon
+    display.setTable("".join(board))
     display.render()
     mock = get_mock_display(display)
     assert mock.showCount == 2
@@ -511,12 +400,12 @@ def test_display_width_height(display):
     assert mock.height == 64
 
 
-def test_panel_text_x_offset(display):
-    """Verifica que todos los textos del panel comienzan en x=64."""
+def test_no_panel_text(display):
+    """Verifica que no hay textos renderizados (panel removido en v2.0)."""
+    display.setTable(INITIAL_BOARD)
     display.render()
     mock = get_mock_display(display)
-    for call in mock.textCalls:
-        assert call["x"] == 64, f"Text '{call['text']}' debe estar en x=64"
+    assert len(mock.textCalls) == 0
 
 
 def test_expanded_contains_filled():
@@ -525,7 +414,6 @@ def test_expanded_contains_filled():
         filled = _PIECE_BITMAPS[piece_type]
         expanded = _PIECE_EXPANDED[piece_type]
         for row in range(8):
-            # Todos los bits del filled deben estar en el expanded
             assert (expanded[row] & filled[row]) == filled[row], (
                 f"Pieza {piece_type} row {row}: expanded no contiene todos los bits del filled"
             )
@@ -544,18 +432,54 @@ def test_expanded_has_more_pixels():
         )
 
 
-def test_castling_display(display, chess):
-    """Verifica que enroque se muestra como ultimo movimiento."""
-    chess.play("e2-e4")
-    chess.play("e7-e5")
-    chess.play("g1-f3")
-    chess.play("b8-c6")
-    chess.play("f1-c4")
-    chess.play("g8-f6")
-    chess.play("O-O")
-    display.render()
-    mock = get_mock_display(display)
+def test_default_board_is_empty(display):
+    """Verifica que el board interno inicia como espacios vacios."""
+    assert display._board == " " * 64
 
-    lastMoveCall = find_text_call(mock, 16)
-    assert lastMoveCall is not None
-    assert "O-O" in lastMoveCall["text"]
+
+def test_set_table_accepts_list(display):
+    """Verifica que setTable acepta una lista ademas de cadena."""
+    board = list(INITIAL_BOARD)
+    display.setTable(board)
+    assert display._board == board
+
+
+def test_render_single_piece():
+    """Verifica renderizado con una sola pieza en el tablero."""
+    from modules.chessdisplay import ChessDisplay
+
+    d = ChessDisplay(sda=21, scl=22)
+    # Rey blanco en e1 (file=4, rank=0, index=4)
+    board = list(EMPTY_BOARD)
+    board[4] = "K"
+    d.setTable("".join(board))
+    d.render()
+    mock = get_mock_display(d)
+
+    # e1 con flipped=False: sx=4*8=32, sy=(7-0)*8=56
+    e1_region = mock.getRegion(32, 56, 8, 8)
+    e1_flat = [p for row in e1_region for p in row]
+    assert any(p == 1 for p in e1_flat), "e1 debe tener pixels de pieza (rey blanco)"
+
+
+def test_render_black_piece_on_light_square():
+    """Verifica renderizado de pieza negra en casilla clara."""
+    from modules.chessdisplay import ChessDisplay
+
+    d = ChessDisplay(sda=21, scl=22)
+    # Rey negro en e8 (file=4, rank=7, index=60)
+    # e8: (4+7)%2 == 1 -> casilla clara
+    board = list(EMPTY_BOARD)
+    board[60] = "k"
+    d.setTable("".join(board))
+    d.render()
+    mock = get_mock_display(d)
+
+    # e8 con flipped=False: sx=4*8=32, sy=(7-7)*8=0
+    e8_region = mock.getRegion(32, 0, 8, 8)
+    e8_flat = [p for row in e8_region for p in row]
+    # Pieza negra en casilla clara: expanded=1, filled=0
+    assert any(p == 1 for p in e8_flat), "e8 debe tener pixels de pieza negra"
+    assert any(p == 0 for p in e8_flat), (
+        "e8 debe tener pixels vacios (relleno de pieza negra)"
+    )

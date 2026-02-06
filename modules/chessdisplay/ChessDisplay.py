@@ -1,7 +1,8 @@
 """
 Modulo de visualizacion de ajedrez para pantalla OLED SSD1306 128x64.
-Renderiza el estado de una partida de ajedrez usando pixel art 8x8.
-Exclusivamente de renderizado, no maneja entrada de usuario.
+Renderiza un tablero de ajedrez usando pixel art 8x8 a partir de datos
+recibidos via setTable(). Exclusivamente de renderizado, no maneja
+entrada de usuario ni depende de otros modulos del proyecto.
 Optimizado para ESP32 con MicroPython.
 """
 
@@ -52,10 +53,11 @@ _DARK_SQUARE_PATTERN = bytes([0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55])
 
 class ChessDisplay:
     """
-    Visualizador de partida de ajedrez en pantalla OLED SSD1306 128x64.
+    Visualizador de tablero de ajedrez en pantalla OLED SSD1306 128x64.
 
-    Renderiza un tablero 64x64 con piezas en pixel art 8x8 y un panel
-    informativo 64x64 con turno, movimiento, estado y piezas capturadas.
+    Renderiza un tablero 64x64 con piezas en pixel art 8x8.
+    Recibe datos del tablero via setTable() como cadena/lista de 64 caracteres.
+    No depende de ningun otro modulo del proyecto.
 
     Diferenciacion visual de piezas:
     - Piezas blancas: silueta rellena (bitmap completo)
@@ -64,20 +66,19 @@ class ChessDisplay:
     - En casillas claras: pieza oscura sobre fondo claro
     """
 
-    def __init__(self, chess, sda, scl, flipped=False, address=0x3C, i2cId=0):
+    def __init__(self, sda, scl, flipped=False, address=0x3C, i2cId=0):
         """
         Inicializa el display de ajedrez.
 
         Args:
-            chess: Instancia del modulo Chess para leer estado
             sda: Numero de pin GPIO para SDA
             scl: Numero de pin GPIO para SCL
             flipped: Orientacion inicial. False = blancas abajo, True = negras abajo
             address: Direccion I2C del SSD1306
             i2cId: Numero de bus I2C a usar
         """
-        self._chess = chess
         self._flipped = flipped
+        self._board = " " * 64
         i2c = I2C(i2cId, sda=Pin(sda), scl=Pin(scl))
         self._display = SSD1306_I2C(128, 64, i2c, addr=address)
 
@@ -90,6 +91,21 @@ class ChessDisplay:
     def flipped(self, value):
         self._flipped = value
 
+    def setTable(self, board):
+        """
+        Recibe los datos del tablero y los almacena internamente.
+
+        Args:
+            board: Lista o cadena de 64 caracteres representando el tablero.
+                   Indice 0 = a1, indice 63 = h8.
+                   Piezas blancas: P, N, B, R, Q, K (mayusculas).
+                   Piezas negras: p, n, b, r, q, k (minusculas).
+                   Casilla vacia: ' ' (espacio).
+
+        No llama a render() automaticamente.
+        """
+        self._board = board
+
     def flip(self):
         """
         Invierte la orientacion del tablero (toggle).
@@ -98,15 +114,14 @@ class ChessDisplay:
         self._flipped = not self._flipped
 
     def render(self):
-        """Dibuja el estado actual completo (tablero + panel info) en la pantalla."""
+        """Dibuja el tablero en la pantalla usando los datos del ultimo setTable()."""
         self._display.fill(0)
         self._renderBoard()
-        self._renderPanel()
         self._display.show()
 
     def _renderBoard(self):
         """Dibuja el tablero de ajedrez en la zona izquierda (64x64 pixels)."""
-        board = self._chess._board
+        board = self._board
         display = self._display
 
         for rank in range(8):
@@ -160,63 +175,3 @@ class ChessDisplay:
             for col in range(8):
                 if rowByte & (0x80 >> col):
                     display.pixel(sx + col, sy + row, color)
-
-    def _renderPanel(self):
-        """Dibuja el panel informativo en la zona derecha (64x64 pixels)."""
-        display = self._display
-        chess = self._chess
-        px = 64  # X offset del panel
-
-        # Linea 0: Turno actual
-        turn = chess.getTurn()
-        display.text("Turn: " + ("W" if turn == "w" else "B"), px, 0, 1)
-
-        # Linea 1: Numero de movimiento
-        display.text("Mov:%4d" % chess._fullmoveNumber, px, 8, 1)
-
-        # Linea 2: Ultimo movimiento jugado
-        lastMove = self._getLastMove()
-        if lastMove:
-            display.text(lastMove[:8], px, 16, 1)
-
-        # Linea 3: vacia (separador)
-
-        # Linea 4: Estado de la partida
-        status = self._getStatus()
-        if status:
-            display.text(status, px, 32, 1)
-
-        # Linea 5: Etiqueta capturadas
-        display.text("Capt:", px, 40, 1)
-
-        # Linea 6: Piezas capturadas por blancas (piezas negras)
-        captured = chess.getCapturedPieces()
-        if captured["w"]:
-            display.text(captured["w"][:8], px, 48, 1)
-
-        # Linea 7: Piezas capturadas por negras (piezas blancas)
-        if captured["b"]:
-            display.text(captured["b"][:8], px, 56, 1)
-
-    def _getLastMove(self):
-        """Obtiene el ultimo movimiento jugado desde el historial."""
-        history = self._chess.getHistory()
-        if not history:
-            return ""
-        lastTurn = history[-1]
-        if lastTurn[1]:
-            return lastTurn[1]
-        return lastTurn[0]
-
-    def _getStatus(self):
-        """Obtiene el texto de estado de la partida."""
-        chess = self._chess
-        if chess.isCheckmate():
-            return "MATE!"
-        if chess.isStalemate():
-            return "STALE"
-        if chess.isDraw():
-            return "DRAW"
-        if chess.isCheck():
-            return "CHECK!"
-        return ""
