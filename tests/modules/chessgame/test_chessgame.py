@@ -131,6 +131,14 @@ class TestStart:
         # Board should still have the custom position
         assert game.getPiece("d1") == " "  # No queen on d1
 
+    def test_start_respects_black_turn_from_fen(self, game):
+        game.setFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1")
+        game.start(300000)
+        _mock_time.advance(1000)
+        # Si es turno de negras, su reloj debe correr al iniciar.
+        assert game.getTime("b") == 299000
+        assert game.getTime("w") == 300000
+
 
 # ==================== AC-03, AC-04, AC-05: play() ====================
 

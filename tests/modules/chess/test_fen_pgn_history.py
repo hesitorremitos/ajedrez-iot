@@ -13,6 +13,19 @@ def test_fen_after_move_has_turn_and_ep(chess):
     assert parts[3] == "e3"
 
 
+def test_get_halfmove_clock(chess):
+    assert chess.getHalfmoveClock() == 0
+    chess.play("g1-f3")
+    assert chess.getHalfmoveClock() == 1
+    chess.play("g8-f6")
+    assert chess.getHalfmoveClock() == 2
+
+
+def test_get_last_position_state_normal_after_non_check_move(chess):
+    chess.play("e2-e4")
+    assert chess.getLastPositionState() == "normal"
+
+
 def test_set_fen_loads_position(chess):
     test_fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
     chess.setFen(test_fen)

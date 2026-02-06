@@ -81,3 +81,4 @@ def test_stalemate_callback():
     chess.play("c6-b6")
 
     assert stalemate_called["value"] is True
+    assert chess.getLastPositionState() == "stalemate"

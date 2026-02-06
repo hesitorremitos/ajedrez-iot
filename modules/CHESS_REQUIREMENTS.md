@@ -1,11 +1,11 @@
 ---
-last_updated: "2026-02-06 12:00"
-version: "2.0"
+last_updated: "2026-02-06 16:10"
+version: "2.1"
 status: draft
 author: Discovery Architect
 ---
 
-# Chess Module - Documento de Requerimientos (v2.0)
+# Chess Module - Documento de Requerimientos (v2.1)
 
 > **Cambio mayor respecto a v1.0**: Chess pasa de ser un gestor de partida completo a un **motor puro de reglas**. La logica de partida (historial, undo, capturas, regla 50 movimientos, PGN, isGameOver) se mueve a `ChessGame`. Ver `CHESSGAME_REQUIREMENTS.md`.
 
@@ -44,6 +44,8 @@ Modulo de ajedrez llamado `Chess.py` para ESP32 (MicroPython) que **valida y eje
 | `setFen` | `fen: str` | ninguno | Carga una posicion desde notacion FEN (6 campos standard) |
 | `getFen` | ninguno | `str` | Exporta la posicion actual a notacion FEN (6 campos standard) |
 | `getTurn` | ninguno | `str` | Retorna el jugador en turno: `'w'` o `'b'` |
+| `getHalfmoveClock` | ninguno | `int` | Retorna contador de medio-movimientos (campo 5 FEN) |
+| `getLastPositionState` | ninguno | `str` | Ultimo estado de posicion evaluado: `'normal'`, `'check'`, `'checkmate'`, `'stalemate'` |
 
 ### Metodos de Verificacion de Estado (Posicion)
 
@@ -95,6 +97,16 @@ Evalua si las piezas restantes en el tablero son insuficientes para dar mate:
 - K vs K+B
 - K vs K+N
 - K+B vs K+B (alfiles del mismo color de casilla)
+
+### Metodos agregados en v2.1
+
+#### getHalfmoveClock()
+
+Expone el contador de medio-movimientos para evitar que consumidores (como `ChessGame`) lean atributos privados.
+
+#### getLastPositionState()
+
+Expone el resultado de evaluacion de posicion mas reciente tras `play()`. Esto permite reutilizar la evaluacion de `checkmate/stalemate/check` sin recalcular en capas superiores.
 
 ---
 
@@ -423,6 +435,8 @@ chess.isInsufficientMaterial()  # True (K vs K)
 | 2026-02-06 | isInsufficientMaterial() se hace publico | Dejar privado y duplicar en ChessGame | Reutilizar logica existente sin duplicacion |
 | 2026-02-06 | halfmoveClock/fullmoveNumber se mantienen en Chess | Moverlos a ChessGame; FEN parcial | Son parte del FEN standard. Chess los actualiza como datos de posicion. ChessGame usa el dato para evaluar regla 50 |
 | 2026-02-06 | onMove callback con 5 parametros | Callback simple; retornar dict | Maximo detalle sin allocaciones. Parametros son primitivos |
+| 2026-02-06 | Exponer `getHalfmoveClock()` en API publica | Leer `_halfmoveClock` desde fuera | Mejor encapsulacion y menor acoplamiento |
+| 2026-02-06 | Exponer `getLastPositionState()` en API publica | Recalcular estado en `ChessGame` | Evita trabajo duplicado por movimiento (CPU) |
 
 ## Observaciones y decisiones diferidas
 

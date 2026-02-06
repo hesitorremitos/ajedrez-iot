@@ -200,9 +200,14 @@ class ChessGame:
         self._gameOverReason = None
         self._gameOverWinner = None
 
-        # Configurar relojes
-        self._whiteClock.start(timeBase)
+        # Configurar relojes segun turno activo de la posicion actual
+        self._whiteClock.reset(timeBase)
         self._blackClock.reset(timeBase)
+        currentTurn = self._chess.getTurn()
+        if currentTurn == "w":
+            self._whiteClock.resume()
+        else:
+            self._blackClock.resume()
 
         self._log("Game started: timeBase=%d, increment=%d" % (timeBase, increment))
 
@@ -296,7 +301,9 @@ class ChessGame:
 
     def _checkGameEnd(self, lastMoveColor):
         """Evalua si la partida termino despues de un movimiento."""
-        if self._chess.isCheckmate():
+        positionState = self._chess.getLastPositionState()
+
+        if positionState == "checkmate":
             self._gameOver = True
             self._gameOverReason = "checkmate"
             self._gameOverWinner = lastMoveColor
@@ -304,7 +311,7 @@ class ChessGame:
             if self._onGameOver:
                 self._onGameOver("checkmate", lastMoveColor)
 
-        elif self._chess.isStalemate():
+        elif positionState == "stalemate":
             self._gameOver = True
             self._gameOverReason = "stalemate"
             self._gameOverWinner = None
@@ -447,7 +454,8 @@ class ChessGame:
             bool
         """
         # Regla de 50 movimientos (100 half-moves)
-        if self._chess._halfmoveClock >= 100:
+        halfmoveClock = self._chess.getHalfmoveClock()
+        if halfmoveClock is not None and halfmoveClock >= 100:
             return True
         # Material insuficiente
         if self._chess.isInsufficientMaterial():

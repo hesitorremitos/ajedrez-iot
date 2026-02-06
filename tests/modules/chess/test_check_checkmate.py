@@ -64,6 +64,7 @@ def test_checkmate_scholars_mate(chess):
         chess.play(move)
 
     assert chess.isCheckmate() is True
+    assert chess.getLastPositionState() == "checkmate"
 
 
 def test_checkmate_back_rank(chess):
@@ -97,6 +98,7 @@ def test_check_callback():
     chess.play("e2-e7")
 
     assert check_called["value"] is True
+    assert chess.getLastPositionState() == "check"
 
 
 def test_checkmate_callback():

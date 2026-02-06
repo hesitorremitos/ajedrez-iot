@@ -1,6 +1,6 @@
 ---
-last_updated: "2026-02-06 12:00"
-version: "1.0"
+last_updated: "2026-02-06 16:10"
+version: "1.1"
 status: draft
 author: Discovery Architect
 ---
@@ -90,7 +90,7 @@ Comportamiento:
 1. Configura ambos relojes con `timeBase`.
 2. Guarda `increment` internamente.
 3. Limpia historial, capturas, `_gameOver = False`.
-4. Inicia reloj de blancas (turno inicial).
+4. Inicia el reloj del color activo de la posicion (`chess.getTurn()`), no necesariamente blancas.
 5. **No resetea el tablero**. Si se llamo `setFen()` antes de `start()`, la posicion custom se mantiene. Si no, usa la posicion actual (default: posicion inicial del constructor).
 
 Nota: para posiciones custom, llamar `setFen()` ANTES de `start()`.
@@ -128,8 +128,7 @@ Flujo interno (cuando es valido):
    c. Resume reloj del oponente.
    d. Registra movimiento en historial (Chess dispara `onMove`, ChessGame lo escucha para actualizar historial y capturas).
    e. Evalua fin de partida:
-      - `isCheckmate()` → `_gameOver = True`, dispara `onGameOver('checkmate', currentColor)`.
-      - `isStalemate()` → `_gameOver = True`, dispara `onGameOver('stalemate', None)`.
+      - `checkmate` / `stalemate` usando el estado de posicion ya evaluado por `Chess` tras `play()` (sin recalcular en `ChessGame`).
       - `isDraw()` → `_gameOver = True`, dispara `onDraw()`, `onGameOver('draw', None)`.
    f. Retorna True.
 
@@ -174,6 +173,8 @@ Verifica si la partida es tablas.
 Evalua:
 - **Regla de 50 movimientos**: `halfmoveClock >= 100` (100 medios-movimientos = 50 completos). El contador `halfmoveClock` se mantiene internamente en Chess como parte del estado FEN.
 - **Material insuficiente**: delega a `chess.isInsufficientMaterial()`.
+
+Implementacion recomendada: acceder al contador via API publica (`chess.getHalfmoveClock()`), evitando tocar atributos privados.
 
 Retorna: `bool`.
 
@@ -371,8 +372,8 @@ Parametros:
 ChessGame crea 2 instancias de ChessClock (whiteClock, blackClock) y las orquesta:
 
 ### En start(timeBase, increment)
-- `whiteClock.start(timeBase)` — inicia reloj blanco corriendo.
-- `blackClock.reset(timeBase)` — configura reloj negro pausado.
+- `whiteClock.reset(timeBase)` y `blackClock.reset(timeBase)`.
+- Se reanuda el reloj del turno activo en la posicion (`chess.getTurn()`).
 - Registra handlers de `onTimeout` en ambos relojes.
 
 ### En play() (movimiento exitoso)
@@ -485,7 +486,7 @@ game.start(180000, 2000)        # Nueva partida: 3 min + 2 seg
 ### AC-02: start() inicia partida
 - **Given** una instancia de ChessGame
 - **When** se llama `start(300000, 3000)`
-- **Then** ambos relojes se configuran con 300000ms, increment=3000, reloj blanco corriendo, reloj negro pausado, gameOver=False
+- **Then** ambos relojes se configuran con 300000ms, increment=3000, corre el reloj del turno activo (`getTurn()`), el otro queda pausado, gameOver=False
 
 ### AC-03: play() ejecuta movimiento valido
 - **Given** partida iniciada con start()
@@ -594,6 +595,9 @@ game.start(180000, 2000)        # Nueva partida: 3 min + 2 seg
 | 2026-02-06 | _gameOver como bool simple | Estados explicitos (idle/playing/paused/finished); sin estado formal | Suficiente para los requerimientos actuales, minimo overhead |
 | 2026-02-06 | onGameOver(reason, winner) | Sin parametros; solo reason | Maximo contexto para el consumidor sin consultas adicionales |
 | 2026-02-06 | FEN completo (6 campos) se mantiene en Chess internamente | FEN parcial en Chess, completo en ChessGame; duplicar | Chess ya mantiene halfmoveClock/fullmoveNumber para FEN. ChessGame delega |
+| 2026-02-06 | `start()` activa reloj segun turno FEN (`w`/`b`) | Siempre iniciar blancas | Evita desincronizacion reloj-tablero en posiciones custom |
+| 2026-02-06 | `ChessGame` evita recalcular mate/ahogado despues de `play()` | Recalcular en ChessGame tras `Chess.play()` | Reduce CPU en ESP32 y mantiene una sola fuente de verdad para estado de posicion |
+| 2026-02-06 | `isDraw()` usa `chess.getHalfmoveClock()` | Leer `chess._halfmoveClock` privado | Menor acoplamiento y mejor mantenibilidad |
 | 2026-02-06 | isInsufficientMaterial() queda en Chess (publica) | Todo isDraw en ChessGame; todo en Chess | Es evaluacion pura de posicion. isDraw (regla 50) va a ChessGame |
 | 2026-02-06 | getBoard() en Chess retorna lista de 64 chars | Parsear FEN; acceso directo a _board | Parsear FEN es coste innecesario en ESP32. Acceso directo es O(1) |
 | 2026-02-06 | Estado undo guardado con FEN | Copia directa de _board; Chess expone saveState/restoreState | FEN es mecanismo limpio sin acoplar ChessGame a internos de Chess |

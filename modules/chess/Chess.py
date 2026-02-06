@@ -51,6 +51,7 @@ class Chess:
         self._onCheckmate = None
         self._onStalemate = None
         self._onMove = None
+        self._lastPositionState = "normal"
 
         self.reset()
 
@@ -561,6 +562,7 @@ class Chess:
         self._enPassantSquare = None
         self._halfmoveClock = 0
         self._fullmoveNumber = 1
+        self._lastPositionState = "normal"
         self._log("Game reset to initial position")
 
     def play(self, move):
@@ -797,14 +799,19 @@ class Chess:
     def _triggerPositionCallbacks(self):
         """Dispara callbacks segun el estado de la posicion."""
         if self.isCheckmate():
+            self._lastPositionState = "checkmate"
             if self._onCheckmate:
                 self._onCheckmate()
         elif self.isStalemate():
+            self._lastPositionState = "stalemate"
             if self._onStalemate:
                 self._onStalemate()
         elif self.isCheck():
+            self._lastPositionState = "check"
             if self._onCheck:
                 self._onCheck()
+        else:
+            self._lastPositionState = "normal"
 
     def getLegalMoves(self, square):
         """
@@ -889,6 +896,26 @@ class Chess:
             str: 'w' para blancas, 'b' para negras
         """
         return self._turn
+
+    def getHalfmoveClock(self):
+        """
+        Devuelve el contador de medio-movimientos (FEN campo 5).
+
+        Returns:
+            int
+        """
+        return self._halfmoveClock
+
+    def getLastPositionState(self):
+        """
+        Retorna el ultimo estado de posicion evaluado tras play().
+
+        Valores: 'normal', 'check', 'checkmate', 'stalemate'.
+
+        Returns:
+            str
+        """
+        return self._lastPositionState
 
     def isCheck(self):
         """
@@ -1035,6 +1062,7 @@ class Chess:
 
         # Parsear numero de movimiento completo
         self._fullmoveNumber = int(parts[5]) if len(parts) > 5 else 1
+        self._lastPositionState = "normal"
 
         self._log(f"Position loaded from FEN: {fen}")
 

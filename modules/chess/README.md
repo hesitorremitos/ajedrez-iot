@@ -2,7 +2,7 @@
 
 Motor puro de reglas de ajedrez. Valida y ejecuta movimientos, detecta jaque/mate/ahogado y material insuficiente. Optimizado para entornos con recursos limitados como ESP32.
 
-> **v2.0**: Chess es ahora un motor puro de reglas. La logica de partida (historial, undo, capturas, PGN, fin de partida) se mueve a `ChessGame`. Ver `modules/chessgame/`.
+> **v2.1**: Chess mantiene su rol de motor puro y expone utilidades de estado (`getHalfmoveClock`, `getLastPositionState`) para integracion eficiente con `ChessGame`.
 
 ## Caracteristicas
 
@@ -11,6 +11,7 @@ Motor puro de reglas de ajedrez. Valida y ejecuta movimientos, detecta jaque/mat
 - Deteccion de jaque, jaque mate y ahogado
 - Deteccion de material insuficiente
 - Soporte para notacion FEN (6 campos standard)
+- Estado util para orquestadores: `getHalfmoveClock()`, `getLastPositionState()`
 - Callback `onMove` con detalles de cada movimiento ejecutado
 - Callbacks de posicion: `onCheck`, `onCheckmate`, `onStalemate`
 
@@ -129,6 +130,21 @@ print(chess.getTurn())  # 'w'
 chess.play('e2-e4')
 print(chess.getTurn())  # 'b'
 ```
+
+#### `getHalfmoveClock() -> int`
+Retorna el contador de medio-movimientos (campo 5 de FEN).
+
+```python
+chess = Chess()
+print(chess.getHalfmoveClock())  # 0
+chess.play('g1-f3')
+print(chess.getHalfmoveClock())  # 1
+```
+
+#### `getLastPositionState() -> str`
+Retorna el ultimo estado de posicion evaluado tras `play()`.
+
+Valores posibles: `'normal'`, `'check'`, `'checkmate'`, `'stalemate'`.
 
 #### `isCheck() -> bool`
 Indica si el jugador en turno esta en jaque.
@@ -324,4 +340,4 @@ Las pruebas cubren:
 
 ## Version
 
-2.0 - Febrero 2026
+2.1 - Febrero 2026

@@ -53,7 +53,7 @@ Configura relojes e inicia la partida.
 Comportamiento:
 1. Configura ambos relojes con `timeBase`.
 2. Limpia historial, capturas, `gameOver`.
-3. Inicia reloj de blancas (turno inicial).
+3. Inicia el reloj del turno activo de la posicion (`getTurn()`), respetando FEN custom.
 4. **No resetea el tablero**. Si se llamo `setFen()` antes, la posicion custom se mantiene.
 
 ```python
@@ -416,10 +416,10 @@ Las pruebas cubren:
 - Undo usa FEN para snapshot/restore (evita acoplar ChessGame a internos de Chess)
 - Fischer increment se aplica SOLO al jugador que acaba de mover
 - Siempre se requiere reloj (para "sin limite" usar un `timeBase` alto)
-- `isDraw()` accede a `_halfmoveClock` de Chess para evaluar la regla de 50 movimientos
+- `isDraw()` usa API publica de Chess para evaluar la regla de 50 movimientos
 - Optimizado para uso de memoria en ESP32
 - Compatible con MicroPython
 
 ## Version
 
-1.0 - Febrero 2026
+1.1 - Febrero 2026
