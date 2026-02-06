@@ -17,7 +17,7 @@ class ChessClock:
     Contador regresivo individual para ajedrez.
 
     Cada instancia representa un solo reloj. Un coordinador externo
-    (ej: ChessGame) crea 2 instancias y decide cual corre.
+    crea 2 instancias y decide cual corre.
 
     Unidad estandar: milisegundos (int).
 

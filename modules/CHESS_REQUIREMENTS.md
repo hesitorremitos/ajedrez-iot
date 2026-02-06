@@ -7,13 +7,13 @@ author: Discovery Architect
 
 # Chess Module - Documento de Requerimientos (v2.1)
 
-> **Cambio mayor respecto a v1.0**: Chess pasa de ser un gestor de partida completo a un **motor puro de reglas**. La logica de partida (historial, undo, capturas, regla 50 movimientos, PGN, isGameOver) se mueve a `ChessGame`. Ver `CHESSGAME_REQUIREMENTS.md`.
+> **Cambio mayor respecto a v1.0**: Chess pasa de ser un gestor de partida completo a un **motor puro de reglas**. La logica de partida (historial, undo, capturas, regla 50 movimientos, PGN, isGameOver) se mueve a una capa externa de coordinacion.
 
 ## Descripcion General
 
 Modulo de ajedrez llamado `Chess.py` para ESP32 (MicroPython) que **valida y ejecuta movimientos** en un tablero de ajedrez. Es un motor de reglas puro: conoce como se mueven las piezas, detecta jaque/mate/ahogado/material insuficiente, y mantiene el estado de la posicion (incluyendo FEN completo).
 
-**No gestiona**: historial de movimientos, undo, piezas capturadas (tracking), PGN, regla de 50 movimientos como condicion de tablas, ni deteccion de fin de partida (`isGameOver`). Estas responsabilidades son de `ChessGame`.
+**No gestiona**: historial de movimientos, undo, piezas capturadas (tracking), PGN, regla de 50 movimientos como condicion de tablas, ni deteccion de fin de partida (`isGameOver`). Estas responsabilidades son de una capa externa.
 
 ## Restricciones Tecnicas
 
@@ -60,16 +60,16 @@ Modulo de ajedrez llamado `Chess.py` para ESP32 (MicroPython) que **valida y eje
 
 ## Metodos ELIMINADOS en v2.0
 
-Los siguientes metodos se **mueven a ChessGame**:
+Los siguientes metodos se **mueven a una capa externa de coordinacion**:
 
 | Metodo eliminado | Razon | Nuevo hogar |
 |------------------|-------|-------------|
-| `undo()` | Logica de partida, requiere historial de estados | `ChessGame.undo()` |
-| `getHistory()` | Tracking de historial es responsabilidad de partida | `ChessGame.getHistory()` |
-| `getPgn()` | Exporta partida completa, no posicion | `ChessGame.getPgn()` |
-| `getCapturedPieces()` | Tracking de capturas es responsabilidad de partida | `ChessGame.getCapturedPieces()` |
-| `isDraw()` | La regla de 50 movimientos es condicion de partida | `ChessGame.isDraw()` |
-| `isGameOver()` | Orquesta condiciones de fin de partida | `ChessGame.isGameOver()` |
+| `undo()` | Logica de partida, requiere historial de estados | Capa externa |
+| `getHistory()` | Tracking de historial es responsabilidad de partida | Capa externa |
+| `getPgn()` | Exporta partida completa, no posicion | Capa externa |
+| `getCapturedPieces()` | Tracking de capturas es responsabilidad de partida | Capa externa |
+| `isDraw()` | La regla de 50 movimientos es condicion de partida | Capa externa |
+| `isGameOver()` | Orquesta condiciones de fin de partida | Capa externa |
 
 ---
 
@@ -88,7 +88,7 @@ Retorna la representacion del tablero como cadena de 64 caracteres.
 
 ### isInsufficientMaterial()
 
-Antes era `_isInsufficientMaterial()` (privado). Ahora es publico porque `ChessGame.isDraw()` lo necesita.
+Antes era `_isInsufficientMaterial()` (privado). Ahora es publico para facilitar integracion desde una capa externa.
 
 Evalua si las piezas restantes en el tablero son insuficientes para dar mate:
 - K vs K
@@ -100,7 +100,7 @@ Evalua si las piezas restantes en el tablero son insuficientes para dar mate:
 
 #### getHalfmoveClock()
 
-Expone el contador de medio-movimientos para evitar que consumidores (como `ChessGame`) lean atributos privados.
+Expone el contador de medio-movimientos para evitar que consumidores externos lean atributos privados.
 
 #### getLastPositionState()
 
@@ -136,14 +136,14 @@ Parametros:
 - `isCastling`: bool. True si fue enroque.
 - `isEnPassant`: bool. True si fue captura al paso.
 
-**Proposito**: Permite a `ChessGame` (u otro consumidor) reaccionar a movimientos sin necesidad de que `play()` retorne datos adicionales. Callbacks son zero-allocation si no hay listener registrado, lo cual es optimo para ESP32.
+**Proposito**: Permite a una capa externa (u otro consumidor) reaccionar a movimientos sin necesidad de que `play()` retorne datos adicionales. Callbacks son zero-allocation si no hay listener registrado, lo cual es optimo para ESP32.
 
 ### Callbacks ELIMINADOS en v2.0
 
 | Callback eliminado | Razon | Nuevo hogar |
 |--------------------|-------|-------------|
-| `onDraw` | Condicion de partida (regla 50 movs) | `ChessGame.onDraw` |
-| `onGameOver` | Orquestacion de fin de partida | `ChessGame.onGameOver` |
+| `onDraw` | Condicion de partida (regla 50 movs) | Capa externa |
+| `onGameOver` | Orquestacion de fin de partida | Capa externa |
 
 ### Orden de disparo de callbacks en play()
 
@@ -174,12 +174,12 @@ Despues de ejecutar un movimiento valido:
 
 | Campo eliminado | Razon |
 |-----------------|-------|
-| `_history` | Movido a ChessGame |
-| `_moveStack` | Movido a ChessGame |
-| `_currentTurnMove` | Movido a ChessGame |
-| `_capturedPieces` | Movido a ChessGame |
-| `_onDraw` | Callback movido a ChessGame |
-| `_onGameOver` | Callback movido a ChessGame |
+| `_history` | Movido a capa externa |
+| `_moveStack` | Movido a capa externa |
+| `_currentTurnMove` | Movido a capa externa |
+| `_capturedPieces` | Movido a capa externa |
+| `_onDraw` | Callback movido a capa externa |
+| `_onGameOver` | Callback movido a capa externa |
 
 ### Se agregan
 
@@ -260,7 +260,7 @@ Sin cambios respecto a v1.0.
 
 ---
 
-## Funcionalidad Excluida (movida a ChessGame)
+## Funcionalidad Excluida (movida a capa externa)
 
 - Historial de movimientos (getHistory, _recordMove)
 - Pila de undo (undo, _saveState, _restoreState, _moveStack)
@@ -303,14 +303,14 @@ tests/
       test_basic_moves.py
       test_special_moves.py
       test_check_checkmate.py
-      test_stalemate_draw.py     # Actualizar: tests de regla 50 movs se migran a chessgame
-      test_captured_pieces.py    # Migrar a chessgame
-      test_fen_pgn_history.py    # Migrar tests de PGN, history y undo a chessgame. Mantener tests FEN
+      test_stalemate_draw.py     # Actualizar: tests de regla 50 movs se migran a capa externa
+      test_captured_pieces.py    # Migrar a capa externa
+      test_fen_pgn_history.py    # Migrar tests de PGN, history y undo a capa externa. Mantener tests FEN
 ```
 
 ### Migracion de tests
 
-Los siguientes tests deben **migrarse** a `tests/modules/chessgame/`:
+Los siguientes tests deben **migrarse** al modulo externo correspondiente:
 
 | Test actual | Migrar | Mantener en chess |
 |-------------|--------|-------------------|
@@ -353,7 +353,7 @@ chess.setFen("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
 chess.isInsufficientMaterial()  # True (K vs K)
 
 # Nota: NO hay undo(), getHistory(), getPgn(), getCapturedPieces(),
-#       isDraw(), isGameOver(). Usar ChessGame para estas funcionalidades.
+#       isDraw(), isGameOver(). Usar una capa externa para estas funcionalidades.
 ```
 
 ---
@@ -427,16 +427,16 @@ chess.isInsufficientMaterial()  # True (K vs K)
 | Fecha | Decision | Alternativas | Razon |
 |-------|----------|--------------|-------|
 | 2025-01 | v1.0: Chess como gestor completo de partida | Separar motor y partida desde el inicio | Alcance inicial simplificado |
-| 2026-02-06 | v2.0: Chess pasa a motor puro de reglas | Mantener todo en Chess; Chess + ChessGame con duplicacion | Separacion de responsabilidades para integrar ChessGame con relojes |
+| 2026-02-06 | v2.0: Chess pasa a motor puro de reglas | Mantener todo en Chess; motor + coordinador con duplicacion | Separacion de responsabilidades para integrar relojes |
 | 2026-02-06 | play() retorna solo bool | Dict con detalles; tupla | Callback onMove evita allocaciones (ESP32) |
 | 2026-02-06 | getBoard() retorna cadena de 64 chars | Retornar lista mutable interna | API estable y segura para integracion entre modulos |
-| 2026-02-06 | isInsufficientMaterial() se hace publico | Dejar privado y duplicar en ChessGame | Reutilizar logica existente sin duplicacion |
-| 2026-02-06 | halfmoveClock/fullmoveNumber se mantienen en Chess | Moverlos a ChessGame; FEN parcial | Son parte del FEN standard. Chess los actualiza como datos de posicion. ChessGame usa el dato para evaluar regla 50 |
+| 2026-02-06 | isInsufficientMaterial() se hace publico | Dejar privado y duplicar en capa externa | Reutilizar logica existente sin duplicacion |
+| 2026-02-06 | halfmoveClock/fullmoveNumber se mantienen en Chess | Moverlos a capa externa; FEN parcial | Son parte del FEN standard. Chess los actualiza como datos de posicion. La capa externa usa el dato para evaluar regla 50 |
 | 2026-02-06 | onMove callback con 5 parametros | Callback simple; retornar dict | Maximo detalle sin allocaciones. Parametros son primitivos |
 | 2026-02-06 | Exponer `getHalfmoveClock()` en API publica | Leer `_halfmoveClock` desde fuera | Mejor encapsulacion y menor acoplamiento |
-| 2026-02-06 | Exponer `getLastPositionState()` en API publica | Recalcular estado en `ChessGame` | Evita trabajo duplicado por movimiento (CPU) |
+| 2026-02-06 | Exponer `getLastPositionState()` en API publica | Recalcular estado en capa externa | Evita trabajo duplicado por movimiento (CPU) |
 
 ## Observaciones y decisiones diferidas
 
 - **Formato de getBoard()**: Se estandariza como cadena de 64 caracteres para consistencia entre modulos consumidores.
-- **Migracion de tests**: Los tests afectados deben migrarse a `tests/modules/chessgame/` cuando se implemente ChessGame. Durante la transicion, puede ser necesario mantener tests temporalmente en ambos lados.
+- **Migracion de tests**: Los tests afectados deben migrarse al modulo externo correspondiente cuando se implemente la capa de coordinacion. Durante la transicion, puede ser necesario mantener tests temporalmente en ambos lados.

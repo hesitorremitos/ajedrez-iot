@@ -17,7 +17,7 @@ author: Discovery Architect
 Se requiere un modulo **simple** que provea un **contador regresivo** para ajedrez.
 
 - `ChessClock` representa **un solo contador** (una instancia por jugador).
-- Un coordinador (futuro `ChessGame`) crea 2 instancias y decide cual corre.
+- Un coordinador externo crea 2 instancias y decide cual corre.
 - Este modulo NO decide turnos, NO valida jugadas, NO hace incrementos/delay automaticamente.
 
 ## Goals
@@ -31,7 +31,7 @@ Se requiere un modulo **simple** que provea un **contador regresivo** para ajedr
 - Fischer increment / Bronstein delay / controles multiples.
 - Persistencia en flash.
 - Integracion con botones/GPIO, display o red.
-- Orquestacion de turnos o reglas del juego (eso es `ChessGame`).
+- Orquestacion de turnos o reglas del juego (eso pertenece a otra capa).
 
 ## Restricciones Tecnicas
 
@@ -209,7 +209,7 @@ El descuento es **lazy**: se aplica en `getTime()`, `pause()`, `setTime()`, `add
 Implicacion importante (lazy + callback):
 
 - `onTimeout()` solo se dispara cuando el reloj se sincroniza (por llamadas como `getTime()`/`pause()`/`setTime()`/`addTime()`).
-- Un coordinador (ej: `ChessGame` o controlador de UI) debe hacer polling/refresh periodico si necesita detectar timeout sin interaccion del usuario.
+- Un coordinador (ej: controlador de UI) debe hacer polling/refresh periodico si necesita detectar timeout sin interaccion del usuario.
 
 Requisito de documentacion:
 
@@ -278,7 +278,7 @@ whiteClock.resume()  # o whiteClock.start() si se desea arrancar desde initial
 
 ## Decisions Log
 
-- 2026-02-06: `ChessClock` es un contador por instancia (2 instancias en `ChessGame`). Alternativas: un objeto dual. Razon: simplicidad y menor estado.
+- 2026-02-06: `ChessClock` es un contador por instancia (2 instancias en un coordinador externo). Alternativas: un objeto dual. Razon: simplicidad y menor estado.
 - 2026-02-06: Unidad del modulo es ms, sin sufijos `Ms` en nombres. Razon: consistencia y API mas limpia.
 - 2026-02-06: Se elimina `configure()`; la configuracion se hace via `start(initial)` / `reset(initial)`.
 - 2026-02-06: Default `initial=300000` cuando no hay configuracion.
@@ -286,5 +286,5 @@ whiteClock.resume()  # o whiteClock.start() si se desea arrancar desde initial
 
 ## Observaciones y decisiones diferidas
 
-- Se acorda refinar luego `modules/CHESSGAME_REQUIREMENTS.md` para alinear su flujo de inicializacion con la nueva API (`reset(initial)` / `resume()` / `start(initial)`).
-- No se requiere suite de tests en CPython para `ChessClock` en esta version. Si a futuro se quiere testear `ChessGame` en CPython incluyendo clocks, considerar wrappers internos de ticks (ej: usando `time.monotonic()` en CPython).
+- Se acuerda refinar luego los requerimientos del coordinador externo para alinear su flujo de inicializacion con la nueva API (`reset(initial)` / `resume()` / `start(initial)`).
+- No se requiere suite de tests en CPython para `ChessClock` en esta version. Si a futuro se quiere testear una capa de coordinacion en CPython incluyendo clocks, considerar wrappers internos de ticks (ej: usando `time.monotonic()` en CPython).

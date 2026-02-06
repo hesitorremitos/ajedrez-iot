@@ -2,7 +2,7 @@
 
 Motor puro de reglas de ajedrez. Valida y ejecuta movimientos, detecta jaque/mate/ahogado y material insuficiente. Optimizado para entornos con recursos limitados como ESP32.
 
-> **v2.1**: Chess mantiene su rol de motor puro y expone utilidades de estado (`getHalfmoveClock`, `getLastPositionState`) para integracion eficiente con `ChessGame`.
+> **v2.1**: Chess mantiene su rol de motor puro y expone utilidades de estado (`getHalfmoveClock`, `getLastPositionState`) para integracion eficiente con un orquestador externo.
 
 ## Caracteristicas
 
@@ -316,7 +316,7 @@ chess.setFen("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
 chess.isInsufficientMaterial()  # True (K vs K)
 ```
 
-> **Nota**: Para historial, undo, piezas capturadas, PGN, deteccion de fin de partida y relojes, usar `ChessGame`.
+> **Nota**: Para historial, undo, piezas capturadas, PGN, deteccion de fin de partida y relojes, usar un orquestador externo.
 
 ## Pruebas
 

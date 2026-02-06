@@ -16,7 +16,7 @@ If Cursor rules appear later, merge them into this file.
 - Local dev runtime: CPython 3.11+
 - Test framework: `pytest`
 - Dependency manager: `uv`
-- Primary modules: `chess`, `network`, `chessclock`, `chessgame`, `chessdisplay`
+- Primary modules: `chess`, `network`, `chessclock`, `chessdisplay`
 - Core priority: memory-aware implementations for constrained hardware
 
 ## Environment Setup

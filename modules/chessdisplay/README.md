@@ -12,7 +12,7 @@ Renderizador de tablero para OLED SSD1306 128x64 (I2C), optimizado para ESP32/Mi
 > - Resalta en invertido el reloj del jugador en turno
 > - Centro del panel muestra `B` (blancas) o `N` (negras) + numero de turnos
 
-El modulo es solo de renderizado: no valida jugadas, no maneja entrada de usuario y no depende de `Chess` ni `ChessGame`.
+El modulo es solo de renderizado: no valida jugadas, no maneja entrada de usuario y no depende de `Chess`.
 
 ## API
 

@@ -1,6 +1,6 @@
 # Modulo ChessClock para ESP32 (MicroPython)
 
-Contador regresivo lazy para ajedrez. Cada instancia representa un solo reloj (una instancia por jugador). Un coordinador externo (ej: `ChessGame`) crea 2 instancias y decide cual corre.
+Contador regresivo lazy para ajedrez. Cada instancia representa un solo reloj (una instancia por jugador). Un coordinador externo crea 2 instancias y decide cual corre.
 
 ## Caracteristicas
 

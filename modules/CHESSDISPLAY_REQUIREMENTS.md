@@ -21,7 +21,7 @@ No responsabilidad:
 - Lectura de botones.
 - Control de tiempo interno.
 
-El modulo no depende de `Chess` ni `ChessGame`; solo recibe datos crudos.
+El modulo no depende de `Chess`; solo recibe datos crudos.
 
 ## Restricciones Tecnicas
 
