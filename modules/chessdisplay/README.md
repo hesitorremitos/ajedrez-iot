@@ -7,6 +7,11 @@ Renderizador de tablero para OLED SSD1306 128x64 (I2C), optimizado para ESP32/Mi
 > - Optimizacion de diccionario unificado mantiene legibilidad
 > - Comentarios exhaustivos en funciones criticas
 
+> v2.4: Panel lateral doble para relojes por jugador
+> - `renderClock(clockText, color)` actualiza reloj por color (`w`/`b`)
+> - Resalta en invertido el reloj del jugador en turno
+> - Centro del panel muestra `B` (blancas) o `N` (negras) + numero de turnos
+
 El modulo es solo de renderizado: no valida jugadas, no maneja entrada de usuario y no depende de `Chess` ni `ChessGame`.
 
 ## API
@@ -14,7 +19,7 @@ El modulo es solo de renderizado: no valida jugadas, no maneja entrada de usuari
 ### Constructor
 
 ```python
-ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
+ChessDisplay(sda, scl, address=0x3C, i2cId=0)
 ```
 
 ### Metodos
@@ -28,29 +33,39 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
     - `k,q,r,b,n,p`: piezas negras
   - **Lanza `ValueError`** si encuentra un caracter no reconocido
 
-- `renderClock(clockText)`
-  - Dibuja reloj grande `MM:SS` en la parte superior derecha (64x16) y llama `show()`.
-  - Fuente 8x16 precomputada en bytes hex (formato `MONO_VLSB`) para rendimiento.
+- `renderClock(clockText, color)`
+  - Actualiza reloj `MM:SS` del jugador indicado por `color` (`'w'` o `'b'`).
+  - Repinta el panel lateral y llama `show()`.
 
-- `flip()`
-  - Invierte orientacion del tablero (blancas abajo / negras abajo).
-  - No repinta automaticamente.
+- `renderTurn(color)`
+  - Actualiza jugador en turno (`'w'` o `'b'`) y repinta panel lateral.
 
-### Propiedades
+- `renderTurnCount(turnCount)`
+  - Actualiza numero de turnos y repinta panel lateral.
 
-- `flipped` (`bool`) lectura/escritura.
+- `renderSidePanel(whiteClock, blackClock, activeColor, turnCount)`
+  - Actualiza todo el panel lateral en una sola llamada.
 
 ## Uso con modulo Chess
 
 ```python
->>> from modules.chess import Chess
->>> from modules.chessdisplay import ChessDisplay
->>> chess = Chess()
->>> display = ChessDisplay(21, 22)
->>> display.renderBoard(chess.getBoard())
->>> display.renderClock("05:00")
->>> chess.play("e2-e4")
->>> display.renderBoard(chess.getBoard())
+from modules.chess import Chess
+from modules.chessdisplay import ChessDisplay
+
+# Instancias base
+chess = Chess()
+display = ChessDisplay(21, 22)
+
+# Render inicial de tablero y panel lateral
+display.renderBoard(chess.getBoard())
+display.renderSidePanel("05:00", "05:00", "w", 1)
+
+# Tras un movimiento, actualizar tablero
+chess.play("e2-e4")
+display.renderBoard(chess.getBoard())
+display.renderClock("04:58", "w")
+display.renderTurn("b")
+display.renderTurnCount(1)
 ```
 
 ## Layout actual
@@ -58,16 +73,16 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 ```text
 |<--- 64px --->|<--- 64px --->|
 +==============+==============+
-|              |   MM:SS      |
-|   Tablero    |   (grande)   |
-|   8x8        |              |
-|              |   (libre)    |
+|              |   03:00      |  <- reloj superior
+|   Tablero    |              |
+|   8x8        |  B   12      |  <- jugador en turno + turnos
+|              |              |
+|              |   02:58      |  <- reloj inferior
 +==============+==============+
 ```
 
 - Izquierda: tablero completo 8x8 (casillas de 8x8).
-- Derecha superior: reloj grande `MM:SS`.
-- Derecha inferior: libre para futuras capas UI.
+- Derecha: panel lateral completo (reloj superior, estado central, reloj inferior).
 
 ## Notas de rendimiento
 
@@ -75,6 +90,7 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 - Patron oscuro estilo `*-*-*` para mantener lectura de casillas.
 - Piezas negras en contorno ajustado (interior hueco) para mejor contraste en casillas oscuras.
 - `renderClock()` usa glifos 8x16 precomputados en hex para minimizar trabajo por frame.
+- Solo se redibuja el panel lateral cuando cambian relojes/turno/contador.
 
 ### Optimizaciones v2.1+
 
@@ -99,4 +115,4 @@ uv run pytest tests/modules/chessdisplay/test_chess_display.py
 
 ## Version
 
-2.3 - Febrero 2026
+2.4 - Febrero 2026

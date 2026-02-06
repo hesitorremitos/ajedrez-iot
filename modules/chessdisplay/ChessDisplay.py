@@ -139,37 +139,23 @@ class ChessDisplay:
     - Cualquier otro caracter lanza ValueError
     """
 
-    def __init__(self, sda, scl, flipped=False, address=0x3C, i2cId=0):
+    def __init__(self, sda, scl, address=0x3C, i2cId=0):
         """
         Inicializa el display de ajedrez.
 
         Args:
             sda: Numero de pin GPIO para SDA
             scl: Numero de pin GPIO para SCL
-            flipped: Orientacion inicial. False = blancas abajo, True = negras abajo
             address: Direccion I2C del SSD1306
             i2cId: Numero de bus I2C a usar
         """
-        self._flipped = flipped
         self._board = " " * 64
+        self._clockWhite = ""
+        self._clockBlack = ""
+        self._activeColor = "w"
+        self._turnCount = 1
         i2c = I2C(i2cId, sda=Pin(sda), scl=Pin(scl))
         self._display = SSD1306_I2C(128, 64, i2c, addr=address)
-
-    @property
-    def flipped(self):
-        """Orientacion actual del tablero."""
-        return self._flipped
-
-    @flipped.setter
-    def flipped(self, value):
-        self._flipped = value
-
-    def flip(self):
-        """
-        Invierte la orientacion del tablero (toggle).
-        No repinta automaticamente.
-        """
-        self._flipped = not self._flipped
 
     def renderBoard(self, board):
         """
@@ -193,55 +179,156 @@ class ChessDisplay:
         self._renderBoard()
         self._display.show()
 
-    def renderClock(self, clockText):
-        """Renderiza reloj MM:SS grande en la parte superior derecha y hace show()."""
+    def renderClock(self, clockText, color):
+        """Actualiza reloj de un color y repinta el panel lateral."""
+        if color not in ("w", "b"):
+            raise ValueError("color debe ser 'w' o 'b'")
+
         text = clockText if clockText else ""
+        if color == "w":
+            self._clockWhite = text
+        else:
+            self._clockBlack = text
+
+        self._renderSidePanel()
+        self._display.show()
+
+    def renderTurn(self, color):
+        """Actualiza jugador en turno ('w' o 'b') y repinta panel lateral."""
+        if color not in ("w", "b"):
+            raise ValueError("color debe ser 'w' o 'b'")
+        self._activeColor = color
+        self._renderSidePanel()
+        self._display.show()
+
+    def renderTurnCount(self, turnCount):
+        """Actualiza contador de turnos y repinta panel lateral."""
+        if turnCount < 0:
+            raise ValueError("turnCount debe ser >= 0")
+        self._turnCount = turnCount
+        self._renderSidePanel()
+        self._display.show()
+
+    def renderSidePanel(self, whiteClock, blackClock, activeColor, turnCount):
+        """Actualiza todo el panel lateral en una sola llamada."""
+        if activeColor not in ("w", "b"):
+            raise ValueError("activeColor debe ser 'w' o 'b'")
+        if turnCount < 0:
+            raise ValueError("turnCount debe ser >= 0")
+
+        self._clockWhite = whiteClock if whiteClock else ""
+        self._clockBlack = blackClock if blackClock else ""
+        self._activeColor = activeColor
+        self._turnCount = turnCount
+
+        self._renderSidePanel()
+        self._display.show()
+
+    def _renderSidePanel(self):
+        """Dibuja panel derecho: reloj superior, estado centro, reloj inferior."""
         display = self._display
         buf = display.buffer
         width = display.width
         flatBuffer = not (isinstance(buf, list) and buf and isinstance(buf[0], list))
 
-        xStart = 64
-        xEnd = 128
+        panelX0 = 64
+        panelX1 = 128
+
+        topColor = "b"
+        bottomColor = "w"
+
+        topClock = self._clockWhite if topColor == "w" else self._clockBlack
+        bottomClock = self._clockWhite if bottomColor == "w" else self._clockBlack
+        topInvert = self._activeColor == topColor
+        bottomInvert = self._activeColor == bottomColor
 
         if flatBuffer:
-            buf[xStart:xEnd] = _CLEAR_64
-            buf[width + xStart : width + xEnd] = _CLEAR_64
+            for page in range(8):
+                start = page * width + panelX0
+                buf[start : start + 64] = _CLEAR_64
 
-            x = 66
-            for ch in text[:5]:
-                idx = _clockGlyphIndex(ch)
-                if idx >= 0:
-                    lowCols, highCols = _CLOCK_GLYPH_8X16[idx]
-                    for col in range(8):
-                        px = x + col
-                        if px < xEnd:
-                            buf[px] = lowCols[col]
-                            buf[width + px] = highCols[col]
-                x += 9
+            self._drawClockLineFlat(buf, width, 0, topClock, topInvert)
+            self._drawClockLineFlat(buf, width, 48, bottomClock, bottomInvert)
 
-            display.show()
+            activeLabel = "B" if self._activeColor == "w" else "N"
+            display.text(activeLabel, 70, 28, 1)
+            display.text(str(self._turnCount), 86, 28, 1)
             return
 
-        # Fallback para mocks de tests con buffer 2D por pixel.
-        display.fill_rect(64, 0, 64, 16, 0)
-        x = 66
+        # Fallback para mocks con buffer 2D
+        display.fill_rect(panelX0, 0, 64, 64, 0)
+        self._drawClockLineFallback(display, 0, topClock, topInvert)
+        self._drawClockLineFallback(display, 48, bottomClock, bottomInvert)
+
+        activeLabel = "B" if self._activeColor == "w" else "N"
+        display.text(activeLabel, 70, 28, 1)
+        display.text(str(self._turnCount), 86, 28, 1)
+
+    def _drawClockLineFlat(self, buf, width, y, text, invert):
+        """Dibuja un reloj MM:SS en y usando buffer plano MONO_VLSB."""
+        page = y >> 3
+        pageBase0 = page * width
+        pageBase1 = (page + 1) * width
+        x0 = 66
+        charStep = 9
+        clockWidth = 44
+
+        if invert:
+            for x in range(x0, x0 + clockWidth):
+                buf[pageBase0 + x] = 0xFF
+                buf[pageBase1 + x] = 0xFF
+
+        x = x0
         for ch in text[:5]:
             idx = _clockGlyphIndex(ch)
             if idx >= 0:
                 lowCols, highCols = _CLOCK_GLYPH_8X16[idx]
                 for col in range(8):
                     px = x + col
-                    if px >= xEnd:
+                    if px >= 128:
+                        continue
+
+                    low = lowCols[col]
+                    high = highCols[col]
+
+                    if invert:
+                        buf[pageBase0 + px] &= (~low) & 0xFF
+                        buf[pageBase1 + px] &= (~high) & 0xFF
+                    else:
+                        buf[pageBase0 + px] |= low
+                        buf[pageBase1 + px] |= high
+            x += charStep
+
+    def _drawClockLineFallback(self, display, y, text, invert):
+        """Fallback de reloj para mocks por pixel."""
+        x0 = 66
+        charStep = 9
+        clockWidth = 44
+
+        if invert:
+            display.fill_rect(x0, y, clockWidth, 16, 1)
+
+        x = x0
+        for ch in text[:5]:
+            idx = _clockGlyphIndex(ch)
+            if idx >= 0:
+                lowCols, highCols = _CLOCK_GLYPH_8X16[idx]
+                for col in range(8):
+                    px = x + col
+                    if px >= 128:
                         continue
                     low = lowCols[col]
                     high = highCols[col]
                     for row in range(8):
-                        display.pixel(px, row, 1 if (low & (1 << row)) else 0)
-                        display.pixel(px, row + 8, 1 if (high & (1 << row)) else 0)
-            x += 9
-
-        display.show()
+                        bitLow = 1 if (low & (1 << row)) else 0
+                        bitHigh = 1 if (high & (1 << row)) else 0
+                        if invert:
+                            display.pixel(px, y + row, 0 if bitLow else 1)
+                            display.pixel(px, y + 8 + row, 0 if bitHigh else 1)
+                        else:
+                            display.pixel(px, y + row, bitLow)
+                            display.pixel(px, y + 8 + row, bitHigh)
+            x += charStep
 
     def _renderBoard(self):
         """
@@ -280,13 +367,9 @@ class ChessDisplay:
         # Iterar sobre cada casilla del tablero 8x8
         for rank in range(8):
             for file in range(8):
-                # Calcular coordenadas de pantalla segun orientacion
-                if self._flipped:
-                    sx = (7 - file) * 8
-                    sy = rank * 8
-                else:
-                    sx = file * 8
-                    sy = (7 - rank) * 8
+                # Orientacion fija: blancas abajo, negras arriba
+                sx = file * 8
+                sy = (7 - rank) * 8
 
                 # Determinar patron de fondo: a1 (file=0, rank=0) es casilla oscura
                 isDarkSquare = (file + rank) % 2 == 0

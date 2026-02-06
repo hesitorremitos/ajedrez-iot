@@ -120,7 +120,6 @@ def test_create_with_required_params():
     from modules.chessdisplay import ChessDisplay
 
     d = ChessDisplay(sda=21, scl=22)
-    assert d.flipped is False
     assert d._display.addr == 0x3C
     assert d._display.i2c.id == 0
 
@@ -131,8 +130,7 @@ def test_create_with_required_params():
 def test_create_with_all_params():
     from modules.chessdisplay import ChessDisplay
 
-    d = ChessDisplay(sda=21, scl=22, flipped=True, address=0x3D, i2cId=1)
-    assert d.flipped is True
+    d = ChessDisplay(sda=21, scl=22, address=0x3D, i2cId=1)
     assert d._display.addr == 0x3D
     assert d._display.i2c.id == 1
     assert d._display.i2c.sda.num == 21
@@ -167,7 +165,7 @@ def test_render_after_pawn_move(display):
     mock = get_mock_display(display)
 
     # El peon debe estar en e4 (file=4, rank=3) y no en e2 (file=4, rank=1)
-    # En posicion normal (flipped=False), e4 esta en sx=4*8=32, sy=(7-3)*8=32
+    # Orientacion fija: e4 esta en sx=4*8=32, sy=(7-3)*8=32
     e4_region = mock.getRegion(32, 32, 8, 8)
     # e2 esta en sx=32, sy=(7-1)*8=48
     e2_region = mock.getRegion(32, 48, 8, 8)
@@ -220,44 +218,14 @@ def test_render_without_set_table_draws_empty_board(display):
         assert all(p == 0 for p in row), "b1 sin pieza debe estar vacia"
 
 
-# ==================== AC-08: flip() invierte orientacion ====================
+# ==================== AC-08: Orientacion fija muestra blancas abajo ====================
 
 
-def test_flip_changes_false_to_true(display):
-    assert display.flipped is False
-    display.flip()
-    assert display.flipped is True
-
-
-# ==================== AC-09: flip() es toggle ====================
-
-
-def test_flip_changes_true_to_false():
-    from modules.chessdisplay import ChessDisplay
-
-    d = ChessDisplay(sda=21, scl=22, flipped=True)
-    assert d.flipped is True
-    d.flip()
-    assert d.flipped is False
-
-
-# ==================== AC-10: flip() no llama a render ====================
-
-
-def test_flip_does_not_call_show(display):
-    mock = get_mock_display(display)
-    display.flip()
-    assert mock.showCount == 0
-
-
-# ==================== AC-11: Orientacion flipped=False muestra blancas abajo ====================
-
-
-def test_flipped_false_white_at_bottom(display):
+def test_white_at_bottom(display):
     display.renderBoard(INITIAL_BOARD)
     mock = get_mock_display(display)
 
-    # Con flipped=False, rank 0 (fila 1, blancas) se dibuja en sy=(7-0)*8=56
+    # Orientacion fija: rank 0 (fila 1, blancas) se dibuja en sy=(7-0)*8=56
     # La torre blanca en a1 (file=0, rank=0) esta en sx=0, sy=56
     a1_region = mock.getRegion(0, 56, 8, 8)
     a1_flat = [p for row in a1_region for p in row]
@@ -273,42 +241,7 @@ def test_flipped_false_white_at_bottom(display):
     assert any(p == 1 for p in a8_flat), "a8 debe tener pieza negra"
 
 
-# ==================== AC-12: Orientacion flipped=True muestra negras abajo ====================
-
-
-def test_flipped_true_black_at_bottom():
-    from modules.chessdisplay import ChessDisplay
-
-    d = ChessDisplay(sda=21, scl=22, flipped=True)
-    d.renderBoard(INITIAL_BOARD)
-    mock = get_mock_display(d)
-
-    # Con flipped=True, rank 7 (fila 8, negras) se dibuja en sy=7*8=56
-    # La torre negra en a8 (file=0, rank=7) esta en sx=(7-0)*8=56, sy=7*8=56
-    a8_region = mock.getRegion(56, 56, 8, 8)
-    a8_flat = [p for row in a8_region for p in row]
-    assert any(p == 1 for p in a8_flat), "a8 (negra abajo) debe tener pieza"
-
-    # La torre blanca en a1 (file=0, rank=0) esta en sx=(7-0)*8=56, sy=0*8=0
-    a1_region = mock.getRegion(56, 0, 8, 8)
-    a1_flat = [p for row in a1_region for p in row]
-    assert any(p == 0 for p in a1_flat) and any(p == 1 for p in a1_flat), (
-        "a1 (blanca arriba) debe tener pieza"
-    )
-
-
-# ==================== AC-13: Propiedad flipped es legible y escribible ====================
-
-
-def test_flipped_property_read_write(display):
-    assert display.flipped is False
-    display.flipped = True
-    assert display.flipped is True
-    display.flipped = False
-    assert display.flipped is False
-
-
-# ==================== AC-14: Piezas blancas y negras son visualmente distinguibles ====================
+# ==================== AC-09: Piezas blancas y negras son visualmente distinguibles ====================
 
 
 def test_white_black_pieces_distinguishable(display):
@@ -328,7 +261,7 @@ def test_white_black_pieces_distinguishable(display):
         )
 
 
-# ==================== AC-15: Patron ajedrezado correcto ====================
+# ==================== AC-10: Patron ajedrezado correcto ====================
 
 
 def test_checkered_pattern_correct(display):
@@ -337,7 +270,7 @@ def test_checkered_pattern_correct(display):
     mock = get_mock_display(display)
 
     # a1 (file=0, rank=0): isDark = (0+0)%2==0 -> oscura (patron dithering)
-    # En pantalla con flipped=False: sx=0, sy=(7-0)*8=56
+    # En pantalla (orientacion fija): sx=0, sy=(7-0)*8=56
     a1_region = mock.getRegion(0, 56, 8, 8)
     a1_flat = [p for row in a1_region for p in row]
     count_ones = sum(a1_flat)
@@ -388,13 +321,13 @@ def test_multiple_renders(display):
 
 def test_render_clock_calls_show(display):
     mock = get_mock_display(display)
-    display.renderClock("05:00")
+    display.renderClock("05:00", "w")
     assert mock.showCount == 1
 
 
 def test_render_clock_draws_right_top_region(display):
     mock = get_mock_display(display)
-    display.renderClock("12:34")
+    display.renderClock("12:34", "b")
 
     # Zona reloj: derecha superior (x=64..127, y=0..15)
     region = mock.getRegion(64, 0, 64, 16)
@@ -402,6 +335,28 @@ def test_render_clock_draws_right_top_region(display):
     assert any(p == 1 for p in flat), (
         "El reloj debe encender pixeles en la zona superior derecha"
     )
+
+
+def test_render_clock_draws_bottom_clock_for_white(display):
+    mock = get_mock_display(display)
+    display.renderClock("09:59", "w")
+
+    # Zona reloj inferior: derecha inferior (x=64..127, y=48..63)
+    region = mock.getRegion(64, 48, 64, 16)
+    flat = [p for row in region for p in row]
+    assert any(p == 1 for p in flat), (
+        "El reloj blanco debe encender pixeles en la zona inferior derecha"
+    )
+
+
+def test_render_turn_and_turn_count_draw_center_status(display):
+    mock = get_mock_display(display)
+    display.renderTurn("b")
+    display.renderTurnCount(12)
+
+    texts = [c["text"] for c in mock.textCalls]
+    assert "N" in texts, "Debe dibujar estado central N/B"
+    assert "12" in texts, "Debe dibujar turnCount junto al estado central"
 
 
 def test_display_width_height(display):
@@ -458,7 +413,7 @@ def test_render_single_piece():
     d.renderBoard("".join(board))
     mock = get_mock_display(d)
 
-    # e1 con flipped=False: sx=4*8=32, sy=(7-0)*8=56
+    # e1 (orientacion fija): sx=4*8=32, sy=(7-0)*8=56
     e1_region = mock.getRegion(32, 56, 8, 8)
     e1_flat = [p for row in e1_region for p in row]
     assert any(p == 1 for p in e1_flat), "e1 debe tener pixels de pieza (rey blanco)"
@@ -476,7 +431,7 @@ def test_render_black_piece_on_light_square():
     d.renderBoard("".join(board))
     mock = get_mock_display(d)
 
-    # e8 con flipped=False: sx=4*8=32, sy=(7-7)*8=0
+    # e8 (orientacion fija): sx=4*8=32, sy=(7-7)*8=0
     e8_region = mock.getRegion(32, 0, 8, 8)
     e8_flat = [p for row in e8_region for p in row]
     # Pieza negra en casilla clara: expanded=1, filled=0

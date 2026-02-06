@@ -1,11 +1,11 @@
 ---
-last_updated: "2026-02-06 20:15"
-version: "2.3"
+last_updated: "2026-02-06 21:10"
+version: "2.4"
 status: draft
 author: Discovery Architect
 ---
 
-# ChessDisplay Module - Documento de Requerimientos (v2.3)
+# ChessDisplay Module - Documento de Requerimientos (v2.4)
 
 ## Descripcion General
 
@@ -13,7 +13,7 @@ author: Discovery Architect
 
 Responsabilidad:
 - Dibujar tablero 8x8 en la mitad izquierda.
-- Dibujar reloj grande `MM:SS` en la parte superior derecha.
+- Dibujar panel lateral completo con dos relojes (`w` y `b`), estado de turno y contador de turnos.
 
 No responsabilidad:
 - Logica de ajedrez.
@@ -37,15 +37,18 @@ El modulo no depende de `Chess` ni `ChessGame`; solo recibe datos crudos.
 - Se elimina API en dos pasos (`setTable()` + `render()`).
 - API nueva y directa:
   - `renderBoard(board)`
-  - `renderClock(clockText)`
-- `renderClock` usa glifos 8x16 precomputados en bytes hex.
+  - `renderClock(clockText, color)`
+  - `renderTurn(color)`
+  - `renderTurnCount(turnCount)`
+  - `renderSidePanel(whiteClock, blackClock, activeColor, turnCount)`
+- `renderClock` usa glifos 8x16 precomputados en bytes hex y soporta inversion del reloj activo.
 
 ## API Publica
 
 ### Constructor
 
 ```python
-ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
+ChessDisplay(sda, scl, address=0x3C, i2cId=0)
 ```
 
 ### Metodos
@@ -53,14 +56,10 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 | Metodo | Parametros | Retorno | Descripcion |
 |--------|------------|---------|-------------|
 | `renderBoard` | `board` | ninguno | Dibuja tablero 8x8 en zona izquierda y llama `show()` |
-| `renderClock` | `clockText` | ninguno | Dibuja reloj grande `MM:SS` en zona derecha superior y llama `show()` |
-| `flip` | ninguno | ninguno | Toggle de orientacion del tablero |
-
-### Propiedad
-
-| Propiedad | Tipo | Lectura | Escritura |
-|-----------|------|---------|-----------|
-| `flipped` | `bool` | si | si |
+| `renderClock` | `clockText`, `color` | ninguno | Actualiza reloj del color indicado y repinta panel lateral |
+| `renderTurn` | `color` | ninguno | Actualiza turno activo (`w`/`b`) y repinta panel lateral |
+| `renderTurnCount` | `turnCount` | ninguno | Actualiza numero de turnos y repinta panel lateral |
+| `renderSidePanel` | `whiteClock`, `blackClock`, `activeColor`, `turnCount` | ninguno | Actualiza todo el panel lateral en una llamada |
 
 ## Formato de Datos
 
@@ -79,21 +78,36 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 - Formato esperado: `MM:SS`
 - Se renderizan hasta 5 caracteres (`text[:5]`).
 
+### `color` / `activeColor`
+
+- Tipo: `str`
+- Valores validos: `'w'` o `'b'`
+- En panel central se muestra:
+  - `'B'` cuando `activeColor == 'w'` (Blancas)
+  - `'N'` cuando `activeColor == 'b'` (Negras)
+
+### `turnCount`
+
+- Tipo: `int`
+- Restriccion: `>= 0`
+
 ## Layout de Pantalla
 
 ```text
 |<--- 64px --->|<--- 64px --->|
 +==============+==============+
-|              |   MM:SS      |
-|   Tablero    |  (8x16 font) |
-|   8x8        |              |
-|              |   (libre)    |
+|              |   03:00      | <- reloj superior
+|   Tablero    |              |
+|   8x8        |  B    12     | <- estado central (turno + turnos)
+|              |              |
+|              |   02:58      | <- reloj inferior
 +==============+==============+
 ```
 
 - Zona izquierda (x=0..63): tablero completo 8x8.
-- Zona derecha superior (x=64..127, y=0..15): reloj grande.
-- Zona derecha inferior (x=64..127, y=16..63): reservada.
+- Zona derecha superior (x=64..127, y=0..15): reloj del jugador de arriba.
+- Zona derecha central (x=64..127, y=24..39): estado (`B`/`N`) + turnCount.
+- Zona derecha inferior (x=64..127, y=48..63): reloj del jugador de abajo.
 
 ## Estrategia de Render (Performance)
 
@@ -107,7 +121,8 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 
 - Glifos 8x16 precomputados en hex.
 - Se escriben dos paginas (page0 y page1) por columna, evitando `fill_rect`/`pixel` en flujo normal.
-- Solo se limpia y redibuja la region `x=64..127, y=0..15`.
+- Se limpia y redibuja todo el panel lateral (`x=64..127, y=0..63`) al actualizar estado de panel.
+- El reloj del jugador activo se dibuja en modo invertido para resaltarlo.
 
 ### Contraste visual
 
@@ -124,36 +139,54 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 3. Conserva lo ya dibujado en la mitad derecha.
 4. Llama `show()`.
 
-### `renderClock(clockText)`
+### `renderClock(clockText, color)`
 
-1. Limpia solo region derecha superior (`64x16`).
-2. Dibuja `clockText` con glifos 8x16.
+1. Actualiza reloj del color indicado (`w`/`b`).
+2. Redibuja panel lateral completo.
+3. Aplica inversion al reloj del jugador activo.
+4. Llama `show()`.
+
+### `renderTurn(color)`
+
+1. Actualiza turno activo (`w`/`b`).
+2. Redibuja panel lateral y central (`B`/`N`).
 3. Llama `show()`.
 
-### `flip()`
+### `renderTurnCount(turnCount)`
 
-- Cambia orientacion.
-- No dibuja automaticamente.
+1. Actualiza contador de turnos.
+2. Redibuja panel lateral.
+3. Llama `show()`.
 
 ## Ejemplos de Uso
 
 ```python
->>> from modules.chess import Chess
->>> from modules.chessdisplay import ChessDisplay
->>> chess = Chess()
->>> display = ChessDisplay(21, 22)
->>> display.renderBoard(chess.getBoard())
->>> display.renderClock("05:00")
->>> chess.play("e2-e4")
->>> display.renderBoard(chess.getBoard())
+from modules.chess import Chess
+from modules.chessdisplay import ChessDisplay
+
+# Instancias base
+chess = Chess()
+display = ChessDisplay(21, 22)
+
+# Render inicial de tablero y reloj
+display.renderBoard(chess.getBoard())
+display.renderSidePanel("05:00", "05:00", "w", 1)
+
+# Tras un movimiento, actualizar tablero
+chess.play("e2-e4")
+display.renderBoard(chess.getBoard())
+display.renderClock("04:58", "w")
+display.renderTurn("b")
+display.renderTurnCount(1)
 ```
 
 ## Criterios de Aceptacion
 
 - AC-01: instancia se crea con parametros default de I2C.
 - AC-02: `renderBoard(board)` dibuja piezas en posiciones correctas y llama `show()`.
-- AC-03: `renderClock('05:00')` dibuja pixeles en region derecha superior y llama `show()`.
-- AC-04: `flip()` alterna orientacion y no llama `show()`.
+- AC-03: `renderClock('05:00', 'w')` actualiza reloj blanco y llama `show()`.
+- AC-04: `renderTurn('b')` actualiza estado central a `N` y llama `show()`.
+- AC-05: `renderTurnCount(12)` dibuja valor de turnos junto al estado central.
 - AC-05: en casilla oscura vacia existe patron de baja densidad (no relleno completo).
 - AC-06: pieza negra se distingue claramente de pieza blanca del mismo tipo.
 
@@ -162,7 +195,9 @@ ChessDisplay(sda, scl, flipped=False, address=0x3C, i2cId=0)
 | Fecha | Decision | Razon |
 |-------|----------|-------|
 | 2026-02-06 | Reemplazar `setTable()+render()` por `renderBoard()` | API mas directa para orquestador |
-| 2026-02-06 | Separar reloj en `renderClock()` | Permite refresco de tiempo sin redibujar tablero |
+| 2026-02-06 | Doble reloj por jugador con `renderClock(clockText, color)` | Requiere panel lateral consistente y por color |
+| 2026-02-06 | Resaltar reloj activo con inversion | Mejor legibilidad del turno sin reducir tamano de fuente |
+| 2026-02-06 | Estado central `B`/`N` + turnCount | Publico hispanohablante y referencia visual compacta |
 | 2026-02-06 | Fuente reloj en hex precomputado | Menor CPU por frame |
 | 2026-02-06 | Mantener `ssd1306.py` y optimizar capa superior | Reusar driver estable y reducir complejidad |
 
