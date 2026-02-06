@@ -34,7 +34,7 @@ Modulo de ajedrez llamado `Chess.py` para ESP32 (MicroPython) que **valida y eje
 | `play` | `move: str` | `bool` | Valida y ejecuta un movimiento. Retorna True si exitoso, False si invalido. Dispara callbacks. **No registra historial ni guarda estado para undo.** |
 | `getLegalMoves` | `square: str` | `list[str]` | Retorna lista de movimientos legales para la pieza en la casilla indicada |
 | `getPiece` | `square: str` | `str` | Retorna la pieza en la casilla. Espacio vacio si no hay pieza |
-| `getBoard` | ninguno | `list` | Retorna la representacion interna del tablero como lista de 64 caracteres. **Nuevo en v2.0.** |
+| `getBoard` | ninguno | `str` | Retorna la representacion del tablero como cadena de 64 caracteres. **Nuevo en v2.0.** |
 | `reset` | ninguno | ninguno | Reinicia el tablero a la posicion inicial |
 
 ### Metodos de Estado FEN
@@ -77,16 +77,14 @@ Los siguientes metodos se **mueven a ChessGame**:
 
 ### getBoard()
 
-Retorna la representacion interna del tablero como lista de 64 caracteres.
+Retorna la representacion del tablero como cadena de 64 caracteres.
 
 - Indice 0 = a1, indice 63 = h8.
 - Piezas blancas: `P, N, B, R, Q, K` (mayusculas).
 - Piezas negras: `p, n, b, r, q, k` (minusculas).
 - Casilla vacia: `' '` (espacio).
 
-**Justificacion**: Este metodo existe porque parsear el FEN para extraer la posicion del tablero es un coste computacional innecesario en ESP32. `getBoard()` provee acceso directo O(1) a la representacion interna.
-
-El implementador decide si retorna una copia de la lista (seguro pero aloca 64 chars) o la referencia directa (zero-allocation pero el consumidor no debe mutar).
+**Justificacion**: `getBoard()` entrega un formato simple y estable para integracion entre modulos (ej: display), sin exponer la estructura interna mutable del motor.
 
 ### isInsufficientMaterial()
 
@@ -342,7 +340,7 @@ chess.getLegalMoves('d7')    # ['d7-d6', 'd7-d5']
 chess.getTurn()              # 'b'
 chess.isCheck()              # False
 chess.getPiece('e4')         # 'P'
-chess.getBoard()             # lista de 64 caracteres
+chess.getBoard()             # cadena de 64 caracteres
 chess.getFen()               # FEN completo con 6 campos
 
 # Callbacks
@@ -387,10 +385,10 @@ chess.isInsufficientMaterial()  # True (K vs K)
 - **When** se juega `play('O-O')`
 - **Then** onMove recibe: `('O-O', None, False, True, False)`
 
-### AC-06: getBoard() retorna 64 caracteres
+### AC-06: getBoard() retorna cadena de 64 caracteres
 - **Given** Chess en posicion inicial
 - **When** se llama `getBoard()`
-- **Then** retorna lista de 64 caracteres con piezas en posiciones correctas. `board[0]` = 'R' (a1), `board[63]` = 'r' (h8).
+- **Then** retorna cadena de 64 caracteres con piezas en posiciones correctas. `board[0]` = 'R' (a1), `board[63]` = 'r' (h8).
 
 ### AC-07: isInsufficientMaterial() es publico
 - **Given** posicion K vs K
@@ -431,7 +429,7 @@ chess.isInsufficientMaterial()  # True (K vs K)
 | 2025-01 | v1.0: Chess como gestor completo de partida | Separar motor y partida desde el inicio | Alcance inicial simplificado |
 | 2026-02-06 | v2.0: Chess pasa a motor puro de reglas | Mantener todo en Chess; Chess + ChessGame con duplicacion | Separacion de responsabilidades para integrar ChessGame con relojes |
 | 2026-02-06 | play() retorna solo bool | Dict con detalles; tupla | Callback onMove evita allocaciones (ESP32) |
-| 2026-02-06 | getBoard() retorna lista de 64 chars | Parsear FEN; no exponer | Parsear FEN es coste innecesario en ESP32. Acceso directo O(1) |
+| 2026-02-06 | getBoard() retorna cadena de 64 chars | Retornar lista mutable interna | API estable y segura para integracion entre modulos |
 | 2026-02-06 | isInsufficientMaterial() se hace publico | Dejar privado y duplicar en ChessGame | Reutilizar logica existente sin duplicacion |
 | 2026-02-06 | halfmoveClock/fullmoveNumber se mantienen en Chess | Moverlos a ChessGame; FEN parcial | Son parte del FEN standard. Chess los actualiza como datos de posicion. ChessGame usa el dato para evaluar regla 50 |
 | 2026-02-06 | onMove callback con 5 parametros | Callback simple; retornar dict | Maximo detalle sin allocaciones. Parametros son primitivos |
@@ -440,5 +438,5 @@ chess.isInsufficientMaterial()  # True (K vs K)
 
 ## Observaciones y decisiones diferidas
 
-- **Retorno de getBoard() (copia vs referencia)**: El implementador decide si retorna una copia de la lista (seguro, aloca 64 chars) o referencia directa (zero-allocation, riesgo de mutacion externa). Para ESP32, referencia es preferible si el consumidor es confiable (ChessGame).
+- **Formato de getBoard()**: Se estandariza como cadena de 64 caracteres para consistencia entre modulos consumidores.
 - **Migracion de tests**: Los tests afectados deben migrarse a `tests/modules/chessgame/` cuando se implemente ChessGame. Durante la transicion, puede ser necesario mantener tests temporalmente en ambos lados.

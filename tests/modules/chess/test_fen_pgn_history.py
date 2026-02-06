@@ -61,8 +61,9 @@ def test_board_str_contains_coordinates(chess):
 
 
 def test_get_board_returns_64_chars(chess):
-    """getBoard() returns a list of 64 characters."""
+    """getBoard() returns a string of 64 characters."""
     board = chess.getBoard()
+    assert isinstance(board, str)
     assert len(board) == 64
 
 

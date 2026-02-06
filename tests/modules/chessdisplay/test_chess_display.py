@@ -2,7 +2,7 @@
 
 import sys
 import pytest
-from modules.chessdisplay.ChessDisplay import _PIECE_BITMAPS, _PIECE_EXPANDED
+from modules.chessdisplay.ChessDisplay import _PIECE_COLS
 
 # Obtener referencia al modulo (no la clase) para parchear Pin, I2C, SSD1306_I2C
 cd_module = sys.modules["modules.chessdisplay.ChessDisplay"]
@@ -143,8 +143,7 @@ def test_create_with_all_params():
 
 
 def test_render_initial_position(display):
-    display.setTable(INITIAL_BOARD)
-    display.render()
+    display.renderBoard(INITIAL_BOARD)
     mock = get_mock_display(display)
 
     # Verifica que show() fue llamado
@@ -164,8 +163,7 @@ def test_render_after_pawn_move(display):
     board[12] = " "
     # e4 = rank 3, file 4 = index 28
     board[28] = "P"
-    display.setTable("".join(board))
-    display.render()
+    display.renderBoard("".join(board))
     mock = get_mock_display(display)
 
     # El peon debe estar en e4 (file=4, rank=3) y no en e2 (file=4, rank=1)
@@ -184,34 +182,34 @@ def test_render_after_pawn_move(display):
     assert all(p == 0 for p in e2_flat), "e2 debe estar vacia (casilla clara)"
 
 
-# ==================== AC-05: setTable() almacena datos ====================
+# ==================== AC-05: renderBoard() actualiza board ====================
 
 
 def test_set_table_stores_data(display):
-    display.setTable(INITIAL_BOARD)
+    display.renderBoard(INITIAL_BOARD)
     assert display._board == INITIAL_BOARD
 
 
 def test_set_table_overwrites_data(display):
-    display.setTable(INITIAL_BOARD)
-    display.setTable(EMPTY_BOARD)
+    display.renderBoard(INITIAL_BOARD)
+    display.renderBoard(EMPTY_BOARD)
     assert display._board == EMPTY_BOARD
 
 
-# ==================== AC-06: setTable() no llama a show ====================
+# ==================== AC-06: renderBoard() llama a show ====================
 
 
 def test_set_table_does_not_call_show(display):
     mock = get_mock_display(display)
-    display.setTable(INITIAL_BOARD)
-    assert mock.showCount == 0
+    display.renderBoard(INITIAL_BOARD)
+    assert mock.showCount == 1
 
 
-# ==================== AC-07: render() sin setTable() dibuja tablero vacio ====================
+# ==================== AC-07: renderBoard() con tablero vacio ====================
 
 
 def test_render_without_set_table_draws_empty_board(display):
-    display.render()
+    display.renderBoard(EMPTY_BOARD)
     mock = get_mock_display(display)
     assert mock.showCount == 1
 
@@ -256,8 +254,7 @@ def test_flip_does_not_call_show(display):
 
 
 def test_flipped_false_white_at_bottom(display):
-    display.setTable(INITIAL_BOARD)
-    display.render()
+    display.renderBoard(INITIAL_BOARD)
     mock = get_mock_display(display)
 
     # Con flipped=False, rank 0 (fila 1, blancas) se dibuja en sy=(7-0)*8=56
@@ -283,8 +280,7 @@ def test_flipped_true_black_at_bottom():
     from modules.chessdisplay import ChessDisplay
 
     d = ChessDisplay(sda=21, scl=22, flipped=True)
-    d.setTable(INITIAL_BOARD)
-    d.render()
+    d.renderBoard(INITIAL_BOARD)
     mock = get_mock_display(d)
 
     # Con flipped=True, rank 7 (fila 8, negras) se dibuja en sy=7*8=56
@@ -316,20 +312,19 @@ def test_flipped_property_read_write(display):
 
 
 def test_white_black_pieces_distinguishable(display):
-    display.setTable(INITIAL_BOARD)
-    display.render()
+    display.renderBoard(INITIAL_BOARD)
 
     # Comparar los bitmaps directamente
-    rook_filled = _PIECE_BITMAPS["R"]
-    rook_outline = _PIECE_EXPANDED["R"]
-    assert rook_filled != rook_outline, "Bitmap relleno y contorno deben ser diferentes"
+    rook_white = _PIECE_COLS["R"]
+    rook_black = _PIECE_COLS["r"]
+    assert rook_white != rook_black, "Bitmap blanca e invertida deben ser diferentes"
 
     # Verificar para todas las piezas
     for piece_type in "KQRBNP":
-        filled = _PIECE_BITMAPS[piece_type]
-        outline = _PIECE_EXPANDED[piece_type]
-        assert filled != outline, (
-            f"Bitmap de {piece_type}: relleno y contorno deben ser diferentes"
+        white = _PIECE_COLS[piece_type]
+        black = _PIECE_COLS[piece_type.lower()]
+        assert white != black, (
+            f"Bitmap de {piece_type}: blanca y negra deben ser diferentes"
         )
 
 
@@ -338,8 +333,7 @@ def test_white_black_pieces_distinguishable(display):
 
 def test_checkered_pattern_correct(display):
     # Usar tablero vacio para verificar solo el patron
-    display.setTable(EMPTY_BOARD)
-    display.render()
+    display.renderBoard(EMPTY_BOARD)
     mock = get_mock_display(display)
 
     # a1 (file=0, rank=0): isDark = (0+0)%2==0 -> oscura (patron dithering)
@@ -347,8 +341,8 @@ def test_checkered_pattern_correct(display):
     a1_region = mock.getRegion(0, 56, 8, 8)
     a1_flat = [p for row in a1_region for p in row]
     count_ones = sum(a1_flat)
-    assert count_ones == 32, (
-        "Casilla oscura debe tener patron dithering (32 pixels encendidos)"
+    assert count_ones == 16, (
+        "Casilla oscura debe tener patron *-*-* (16 pixels encendidos)"
     )
 
     # b1 (file=1, rank=0): isDark = (1+0)%2==1 -> clara (pixels=0)
@@ -365,8 +359,8 @@ def test_checkered_pattern_correct(display):
     b2_region = mock.getRegion(8, 48, 8, 8)
     b2_flat = [p for row in b2_region for p in row]
     count_ones = sum(b2_flat)
-    assert count_ones == 32, (
-        "Casilla oscura debe tener patron dithering (32 pixels encendidos)"
+    assert count_ones == 16, (
+        "Casilla oscura debe tener patron *-*-* (16 pixels encendidos)"
     )
 
 
@@ -374,24 +368,40 @@ def test_checkered_pattern_correct(display):
 
 
 def test_render_calls_fill_and_show(display):
-    display.render()
+    display.renderBoard(EMPTY_BOARD)
     mock = get_mock_display(display)
-    assert mock.fillCount == 1
+    assert mock.fillCount == 0
     assert mock.showCount == 1
 
 
 def test_multiple_renders(display):
-    display.setTable(INITIAL_BOARD)
-    display.render()
+    display.renderBoard(INITIAL_BOARD)
     # Simular movimiento actualizando tablero
     board = list(INITIAL_BOARD)
     board[12] = " "  # e2 vacio
     board[28] = "P"  # e4 peon
-    display.setTable("".join(board))
-    display.render()
+    display.renderBoard("".join(board))
     mock = get_mock_display(display)
     assert mock.showCount == 2
-    assert mock.fillCount == 2
+    assert mock.fillCount == 0
+
+
+def test_render_clock_calls_show(display):
+    mock = get_mock_display(display)
+    display.renderClock("05:00")
+    assert mock.showCount == 1
+
+
+def test_render_clock_draws_right_top_region(display):
+    mock = get_mock_display(display)
+    display.renderClock("12:34")
+
+    # Zona reloj: derecha superior (x=64..127, y=0..15)
+    region = mock.getRegion(64, 0, 64, 16)
+    flat = [p for row in region for p in row]
+    assert any(p == 1 for p in flat), (
+        "El reloj debe encender pixeles en la zona superior derecha"
+    )
 
 
 def test_display_width_height(display):
@@ -402,34 +412,27 @@ def test_display_width_height(display):
 
 def test_no_panel_text(display):
     """Verifica que no hay textos renderizados (panel removido en v2.0)."""
-    display.setTable(INITIAL_BOARD)
-    display.render()
+    display.renderBoard(INITIAL_BOARD)
     mock = get_mock_display(display)
     assert len(mock.textCalls) == 0
 
 
-def test_expanded_contains_filled():
-    """Verifica que el bitmap expandido contiene todos los pixels del filled."""
+def test_inverted_is_not_identical_to_solid():
+    """Verifica que cada glifo invertido difiere del glifo solido."""
     for piece_type in "KQRBNP":
-        filled = _PIECE_BITMAPS[piece_type]
-        expanded = _PIECE_EXPANDED[piece_type]
-        for row in range(8):
-            assert (expanded[row] & filled[row]) == filled[row], (
-                f"Pieza {piece_type} row {row}: expanded no contiene todos los bits del filled"
-            )
+        white = _PIECE_COLS[piece_type]
+        black = _PIECE_COLS[piece_type.lower()]
+        assert white != black
 
 
-def test_expanded_has_more_pixels():
-    """Verifica que el expanded tiene mas pixels que el filled (borde adicional)."""
+def test_inverted_has_high_contrast():
+    """Verifica que el invertido mantiene alto contraste en cada pieza."""
     for piece_type in "KQRBNP":
-        filled = _PIECE_BITMAPS[piece_type]
-        expanded = _PIECE_EXPANDED[piece_type]
-        filled_count = sum(bin(b).count("1") for b in filled)
-        expanded_count = sum(bin(b).count("1") for b in expanded)
-        assert expanded_count > filled_count, (
-            f"Pieza {piece_type}: expanded ({expanded_count}) debe tener mas "
-            f"pixels que filled ({filled_count})"
-        )
+        white = _PIECE_COLS[piece_type]
+        black = _PIECE_COLS[piece_type.lower()]
+        white_count = sum(bin(b).count("1") for b in white)
+        black_count = sum(bin(b).count("1") for b in black)
+        assert black_count != white_count
 
 
 def test_default_board_is_empty(display):
@@ -437,11 +440,11 @@ def test_default_board_is_empty(display):
     assert display._board == " " * 64
 
 
-def test_set_table_accepts_list(display):
-    """Verifica que setTable acepta una lista ademas de cadena."""
+def test_render_board_rejects_list(display):
+    """Verifica que renderBoard exige cadena para formato estandar."""
     board = list(INITIAL_BOARD)
-    display.setTable(board)
-    assert display._board == board
+    with pytest.raises(TypeError):
+        display.renderBoard(board)
 
 
 def test_render_single_piece():
@@ -452,8 +455,7 @@ def test_render_single_piece():
     # Rey blanco en e1 (file=4, rank=0, index=4)
     board = list(EMPTY_BOARD)
     board[4] = "K"
-    d.setTable("".join(board))
-    d.render()
+    d.renderBoard("".join(board))
     mock = get_mock_display(d)
 
     # e1 con flipped=False: sx=4*8=32, sy=(7-0)*8=56
@@ -471,8 +473,7 @@ def test_render_black_piece_on_light_square():
     # e8: (4+7)%2 == 1 -> casilla clara
     board = list(EMPTY_BOARD)
     board[60] = "k"
-    d.setTable("".join(board))
-    d.render()
+    d.renderBoard("".join(board))
     mock = get_mock_display(d)
 
     # e8 con flipped=False: sx=4*8=32, sy=(7-7)*8=0
@@ -483,3 +484,51 @@ def test_render_black_piece_on_light_square():
     assert any(p == 0 for p in e8_flat), (
         "e8 debe tener pixels vacios (relleno de pieza negra)"
     )
+
+
+# ==================== Tests de validacion ====================
+
+
+def test_render_invalid_piece_raises_error(display):
+    """Verifica que renderizar una pieza invalida lanza ValueError."""
+    board = list(EMPTY_BOARD)
+    board[0] = "X"  # Caracter invalido
+
+    with pytest.raises(ValueError) as excinfo:
+        display.renderBoard("".join(board))
+
+    assert "no reconocido" in str(excinfo.value)
+    assert "X" in str(excinfo.value)
+
+
+def test_render_number_raises_error(display):
+    """Verifica que renderizar un numero lanza ValueError."""
+    board = list(EMPTY_BOARD)
+    board[10] = "5"  # Numero invalido
+
+    with pytest.raises(ValueError) as excinfo:
+        display.renderBoard("".join(board))
+
+    assert "no reconocido" in str(excinfo.value)
+
+
+def test_render_special_char_raises_error(display):
+    """Verifica que renderizar un caracter especial lanza ValueError."""
+    board = list(EMPTY_BOARD)
+    board[20] = "@"  # Caracter especial invalido
+
+    with pytest.raises(ValueError) as excinfo:
+        display.renderBoard("".join(board))
+
+    assert "no reconocido" in str(excinfo.value)
+
+
+def test_valid_pieces_do_not_raise_error(display):
+    """Verifica que todas las piezas validas NO lanzan error."""
+    validPieces = "KQRBNPkqrbnp "
+
+    for i, piece in enumerate(validPieces):
+        board = list(EMPTY_BOARD)
+        board[i] = piece
+        # No debe lanzar excepcion
+        display.renderBoard("".join(board))

@@ -880,13 +880,13 @@ class Chess:
 
     def getBoard(self):
         """
-        Retorna la representacion del tablero como lista de 64 caracteres.
+        Retorna la representacion del tablero como cadena de 64 caracteres.
         Indice 0 = a1, indice 63 = h8.
 
         Returns:
-            list: Lista de 64 caracteres (referencia directa al tablero interno)
+            str: Cadena de 64 caracteres
         """
-        return self._board
+        return "".join(self._board)
 
     def getTurn(self):
         """

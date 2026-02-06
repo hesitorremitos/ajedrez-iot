@@ -1,7 +1,7 @@
 """
 Modulo de visualizacion de ajedrez para pantalla OLED SSD1306 128x64.
 Renderiza un tablero de ajedrez usando pixel art 8x8 a partir de datos
-recibidos via setTable(). Exclusivamente de renderizado, no maneja
+recibidos via renderBoard(). Exclusivamente de renderizado, no maneja
 entrada de usuario ni depende de otros modulos del proyecto.
 Optimizado para ESP32 con MicroPython.
 """
@@ -15,40 +15,107 @@ except ImportError:
     SSD1306_I2C = None
 
 
-# Bitmaps de piezas rellenas: 8 bytes por pieza, MSB = pixel izquierdo
-# Total: 6 piezas x 8 bytes = 48 bytes
-_PIECE_BITMAPS = {
-    "K": bytes([0x10, 0x38, 0x10, 0x7C, 0x38, 0x38, 0x7C, 0x7C]),
-    "Q": bytes([0x54, 0x54, 0x7C, 0x38, 0x38, 0x38, 0x7C, 0x7C]),
-    "R": bytes([0x5A, 0x7E, 0x3C, 0x3C, 0x3C, 0x3C, 0x7E, 0x7E]),
-    "B": bytes([0x10, 0x38, 0x28, 0x38, 0x10, 0x38, 0x7C, 0x7C]),
-    "N": bytes([0x30, 0x78, 0xF8, 0x3C, 0x18, 0x38, 0x7C, 0x7C]),
-    "P": bytes([0x00, 0x18, 0x3C, 0x3C, 0x18, 0x3C, 0x7E, 0x7E]),
+# Columnas (MONO_VLSB) precalculadas para dibujar por buffer.
+# Mayusculas = piezas blancas (silueta rellena)
+# Minusculas = piezas negras en contorno (interior hueco),
+# ajustadas para mejorar contraste sobre casillas oscuras sin saturar pixeles.
+_PIECE_COLS = {
+    # Piezas blancas (silueta rellena)
+    "K": bytes([0x00, 0xC8, 0xFA, 0xFF, 0xFA, 0xC8, 0x00, 0x00]),
+    "Q": bytes([0x00, 0xC7, 0xFC, 0xFF, 0xFC, 0xC7, 0x00, 0x00]),
+    "R": bytes([0x00, 0xC3, 0xFE, 0xFF, 0xFF, 0xFE, 0xC3, 0x00]),
+    "B": bytes([0x00, 0xC0, 0xEE, 0xFB, 0xEE, 0xC0, 0x00, 0x00]),
+    "N": bytes([0x04, 0xC6, 0xEF, 0xFF, 0xFE, 0xC8, 0x00, 0x00]),
+    "P": bytes([0x00, 0xC0, 0xEC, 0xFE, 0xFE, 0xEC, 0xC0, 0x00]),
+    # Piezas negras (contorno grueso)
+    "k": bytes([0x00, 0xC8, 0xFA, 0x8F, 0xFA, 0xC8, 0x00, 0x00]),
+    "q": bytes([0x00, 0xC7, 0xFC, 0x87, 0xFC, 0xC7, 0x00, 0x00]),
+    "r": bytes([0x00, 0xC3, 0xFE, 0x83, 0x83, 0xFE, 0xC3, 0x00]),
+    "b": bytes([0x00, 0xC0, 0xEE, 0x93, 0xEE, 0xC0, 0x00, 0x00]),
+    "n": bytes([0x04, 0xC6, 0xEB, 0xBB, 0xFC, 0xC0, 0x00, 0x00]),
+    "p": bytes([0x00, 0x40, 0xAC, 0xB6, 0xB6, 0xAC, 0x40, 0x00]),
 }
 
+# Patron casilla oscura estilo *-*-* (punto cada 2 espacios).
+# Alterna columnas para mantener contraste con piezas negras invertidas.
+_DARK_SQUARE_COLS = bytes([0x55, 0x00, 0x55, 0x00, 0x55, 0x00, 0x55, 0x00])
+_LIGHT_SQUARE_COLS = bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+_CLEAR_64 = bytes(64)
 
-def _makeExpanded(bmp):
+# Fuente de reloj 8x16 en formato MONO_VLSB (dos paginas de 8 px).
+# Cada glifo es (page0_cols, page1_cols), 8 columnas por glifo.
+# Indices guia:
+# 0='0', 1='1', 2='2', 3='3', 4='4', 5='5', 6='6', 7='7', 8='8', 9='9', 10=':'
+_CLOCK_GLYPH_8X16 = (
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x18, 0x18, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x1F, 0x1F, 0x18, 0x18, 0x1F, 0x1F, 0x00]),
+    ),  # 0 -> '0'
+    (
+        bytes([0x00, 0x60, 0x60, 0xF8, 0xF8, 0x00, 0x00, 0x00]),
+        bytes([0x00, 0x18, 0x18, 0x1F, 0x1F, 0x18, 0x18, 0x00]),
+    ),  # 1 -> '1'
+    (
+        bytes([0x00, 0x98, 0x98, 0x98, 0x98, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x1F, 0x1F, 0x19, 0x19, 0x19, 0x19, 0x00]),
+    ),  # 2 -> '2'
+    (
+        bytes([0x00, 0x98, 0x98, 0x98, 0x98, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x19, 0x19, 0x19, 0x19, 0x1F, 0x1F, 0x00]),
+    ),  # 3 -> '3'
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x80, 0x80, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x01, 0x01, 0x01, 0x01, 0x1F, 0x1F, 0x00]),
+    ),  # 4 -> '4'
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x98, 0x98, 0x98, 0x98, 0x00]),
+        bytes([0x00, 0x19, 0x19, 0x19, 0x19, 0x1F, 0x1F, 0x00]),
+    ),  # 5 -> '5'
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x98, 0x98, 0x98, 0x98, 0x00]),
+        bytes([0x00, 0x1F, 0x1F, 0x19, 0x19, 0x1F, 0x1F, 0x00]),
+    ),  # 6 -> '6'
+    (
+        bytes([0x00, 0x18, 0x18, 0x18, 0x18, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x1F, 0x1F, 0x00]),
+    ),  # 7 -> '7'
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x98, 0x98, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x1F, 0x1F, 0x19, 0x19, 0x1F, 0x1F, 0x00]),
+    ),  # 8 -> '8'
+    (
+        bytes([0x00, 0xF8, 0xF8, 0x98, 0x98, 0xF8, 0xF8, 0x00]),
+        bytes([0x00, 0x19, 0x19, 0x19, 0x19, 0x1F, 0x1F, 0x00]),
+    ),  # 9 -> '9'
+    (
+        bytes([0x00, 0x00, 0x00, 0x60, 0x60, 0x00, 0x00, 0x00]),
+        bytes([0x00, 0x00, 0x00, 0x06, 0x06, 0x00, 0x00, 0x00]),
+    ),  # 10 -> ':'
+)
+
+
+def _clockGlyphIndex(ch):
     """
-    Expande un bitmap 1 pixel en todas direcciones (4-conectado).
-    El resultado es el bitmap original + sus vecinos inmediatos.
+    Mapea un caracter de reloj a indice de _CLOCK_GLYPH_8X16.
+
+    Args:
+        ch: Caracter a mapear ('0'-'9' o ':')
+
+    Returns:
+        Indice en _CLOCK_GLYPH_8X16 (0-10) o -1 si no reconocido
     """
-    out = []
-    for r in range(8):
-        above = bmp[r - 1] if r > 0 else 0
-        current = bmp[r]
-        below = bmp[r + 1] if r < 7 else 0
-        # Expandir: arriba, abajo, izquierda, derecha
-        expanded = above | current | below | (current << 1) | (current >> 1)
-        out.append(expanded & 0xFF)
-    return bytes(out)
+    asciiCode = ord(ch)
 
+    # Digitos '0'..'9' mapean a indices 0..9
+    if 48 <= asciiCode <= 57:
+        return asciiCode - 48
 
-# Bitmaps expandidos para piezas negras (borde blanco + relleno negro)
-_PIECE_EXPANDED = {k: _makeExpanded(v) for k, v in _PIECE_BITMAPS.items()}
+    # Dos puntos ':' mapea a indice 10
+    if asciiCode == 58:
+        return 10
 
-# Patron dithering checkerboard para casillas oscuras (8 bytes)
-# Simula "gris" en pantalla monocromatica, mejora contraste con piezas
-_DARK_SQUARE_PATTERN = bytes([0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55])
+    # Caracter no reconocido
+    return -1
 
 
 class ChessDisplay:
@@ -56,14 +123,20 @@ class ChessDisplay:
     Visualizador de tablero de ajedrez en pantalla OLED SSD1306 128x64.
 
     Renderiza un tablero 64x64 con piezas en pixel art 8x8.
-    Recibe datos del tablero via setTable() como cadena/lista de 64 caracteres.
+    Recibe datos del tablero via renderBoard() como cadena de 64 caracteres.
     No depende de ningun otro modulo del proyecto.
 
     Diferenciacion visual de piezas:
-    - Piezas blancas: silueta rellena (bitmap completo)
-    - Piezas negras: silueta de contorno (solo borde del bitmap)
-    - En casillas oscuras: se invierte el color (pieza clara sobre fondo oscuro)
-    - En casillas claras: pieza oscura sobre fondo claro
+    - Piezas blancas (mayusculas K,Q,R,B,N,P): silueta rellena
+    - Piezas negras (minusculas k,q,r,b,n,p): contorno con interior hueco
+    - Casillas oscuras: patron *-*-* de baja densidad
+    - Dibujo optimizado por buffer para reducir llamadas a pixel()
+
+    Caracteres validos en board:
+    - ' ' (espacio): casilla vacia
+    - K,Q,R,B,N,P: piezas blancas (Rey, Reina, Torre, Alfil, Caballo, Peon)
+    - k,q,r,b,n,p: piezas negras
+    - Cualquier otro caracter lanza ValueError
     """
 
     def __init__(self, sda, scl, flipped=False, address=0x3C, i2cId=0):
@@ -91,42 +164,123 @@ class ChessDisplay:
     def flipped(self, value):
         self._flipped = value
 
-    def setTable(self, board):
-        """
-        Recibe los datos del tablero y los almacena internamente.
-
-        Args:
-            board: Lista o cadena de 64 caracteres representando el tablero.
-                   Indice 0 = a1, indice 63 = h8.
-                   Piezas blancas: P, N, B, R, Q, K (mayusculas).
-                   Piezas negras: p, n, b, r, q, k (minusculas).
-                   Casilla vacia: ' ' (espacio).
-
-        No llama a render() automaticamente.
-        """
-        self._board = board
-
     def flip(self):
         """
         Invierte la orientacion del tablero (toggle).
-        No llama a render() automaticamente.
+        No repinta automaticamente.
         """
         self._flipped = not self._flipped
 
-    def render(self):
-        """Dibuja el tablero en la pantalla usando los datos del ultimo setTable()."""
-        self._display.fill(0)
+    def renderBoard(self, board):
+        """
+        Dibuja el tablero 8x8 en la mitad izquierda y hace show().
+
+        Args:
+            board: Cadena de 64 caracteres representando el tablero.
+                   Caracteres validos: ' ' (vacio), K/Q/R/B/N/P (blancas), k/q/r/b/n/p (negras)
+
+        Raises:
+            TypeError: Si board no es cadena
+            ValueError: Si board no tiene 64 caracteres
+            ValueError: Si encuentra un caracter no reconocido en board
+        """
+        if not isinstance(board, str):
+            raise TypeError("board debe ser str de 64 caracteres")
+        if len(board) != 64:
+            raise ValueError("board debe tener exactamente 64 caracteres")
+
+        self._board = board
         self._renderBoard()
         self._display.show()
 
+    def renderClock(self, clockText):
+        """Renderiza reloj MM:SS grande en la parte superior derecha y hace show()."""
+        text = clockText if clockText else ""
+        display = self._display
+        buf = display.buffer
+        width = display.width
+        flatBuffer = not (isinstance(buf, list) and buf and isinstance(buf[0], list))
+
+        xStart = 64
+        xEnd = 128
+
+        if flatBuffer:
+            buf[xStart:xEnd] = _CLEAR_64
+            buf[width + xStart : width + xEnd] = _CLEAR_64
+
+            x = 66
+            for ch in text[:5]:
+                idx = _clockGlyphIndex(ch)
+                if idx >= 0:
+                    lowCols, highCols = _CLOCK_GLYPH_8X16[idx]
+                    for col in range(8):
+                        px = x + col
+                        if px < xEnd:
+                            buf[px] = lowCols[col]
+                            buf[width + px] = highCols[col]
+                x += 9
+
+            display.show()
+            return
+
+        # Fallback para mocks de tests con buffer 2D por pixel.
+        display.fill_rect(64, 0, 64, 16, 0)
+        x = 66
+        for ch in text[:5]:
+            idx = _clockGlyphIndex(ch)
+            if idx >= 0:
+                lowCols, highCols = _CLOCK_GLYPH_8X16[idx]
+                for col in range(8):
+                    px = x + col
+                    if px >= xEnd:
+                        continue
+                    low = lowCols[col]
+                    high = highCols[col]
+                    for row in range(8):
+                        display.pixel(px, row, 1 if (low & (1 << row)) else 0)
+                        display.pixel(px, row + 8, 1 if (high & (1 << row)) else 0)
+            x += 9
+
+        display.show()
+
     def _renderBoard(self):
-        """Dibuja el tablero de ajedrez en la zona izquierda (64x64 pixels)."""
+        """
+        Dibuja el tablero de ajedrez en la zona izquierda (64x64 pixels).
+
+        Itera sobre cada casilla del tablero, determina el patron de fondo
+        (oscuro/claro) segun patron ajedrezado, y dibuja la pieza correspondiente
+        si existe.
+
+        Raises:
+            ValueError: Si encuentra un caracter de pieza no reconocido
+        """
         board = self._board
         display = self._display
+        buf = display.buffer
+        width = display.width
+        flatBuffer = not (isinstance(buf, list) and buf and isinstance(buf[0], list))
 
+        def writeTile(sx, sy, tile):
+            """Escribe un tile de 8x8 bytes en la posicion especificada."""
+            if flatBuffer:
+                # Escritura directa a buffer flat (modo normal ESP32)
+                base = sx + ((sy >> 3) * width)
+                for col in range(8):
+                    buf[base + col] = tile[col]
+                return
+
+            # Fallback para mocks de tests que usan buffer 2D por pixel
+            for col in range(8):
+                colByte = tile[col]
+                x = sx + col
+                for row in range(8):
+                    y = sy + row
+                    display.pixel(x, y, 1 if (colByte & (1 << row)) else 0)
+
+        # Iterar sobre cada casilla del tablero 8x8
         for rank in range(8):
             for file in range(8):
-                # Coordenadas de pantalla segun orientacion
+                # Calcular coordenadas de pantalla segun orientacion
                 if self._flipped:
                     sx = (7 - file) * 8
                     sy = rank * 8
@@ -134,44 +288,31 @@ class ChessDisplay:
                     sx = file * 8
                     sy = (7 - rank) * 8
 
-                # Patron ajedrezado: a1 (file=0, rank=0) es casilla oscura
-                isDark = (file + rank) % 2 == 0
+                # Determinar patron de fondo: a1 (file=0, rank=0) es casilla oscura
+                isDarkSquare = (file + rank) % 2 == 0
 
-                # Dibujar casilla oscura con patron dithering (simula gris)
-                if isDark:
-                    for row in range(8):
-                        rowByte = _DARK_SQUARE_PATTERN[row]
-                        for col in range(8):
-                            if rowByte & (0x80 >> col):
-                                display.pixel(sx + col, sy + row, 1)
-
-                # Pieza en esta casilla
+                # Obtener pieza en esta casilla
                 piece = board[rank * 8 + file]
+
+                # Seleccionar tile a dibujar
                 if piece == " ":
-                    continue
+                    # Casilla vacia: usar patron de fondo
+                    tile = _DARK_SQUARE_COLS if isDarkSquare else _LIGHT_SQUARE_COLS
 
-                isWhite = piece.isupper()
-                pieceKey = piece.upper()
-                bmp = _PIECE_BITMAPS[pieceKey]
+                elif piece in _PIECE_COLS:
+                    # Pieza valida: usar su bitmap
+                    tile = _PIECE_COLS[piece]
 
-                # Limpiar area de la pieza (quita dithering debajo)
-                if isDark:
-                    display.fill_rect(sx, sy, 8, 8, 0)
-
-                if isWhite:
-                    # Pieza blanca: bitmap solido blanco
-                    self._drawBitmap(display, sx, sy, bmp, 1)
                 else:
-                    # Pieza negra: borde blanco expandido + relleno negro (solida con borde)
-                    self._drawBitmap(display, sx, sy, _PIECE_EXPANDED[pieceKey], 1)
-                    self._drawBitmap(display, sx, sy, bmp, 0)
+                    # Pieza desconocida: lanzar error
+                    if isinstance(piece, str) and len(piece) == 1:
+                        asciiCode = ord(piece)
+                    else:
+                        asciiCode = -1
 
-    def _drawBitmap(self, display, sx, sy, bitmap, color):
-        """Dibuja un bitmap 8x8 en la posicion indicada."""
-        for row in range(8):
-            rowByte = bitmap[row]
-            if rowByte == 0:
-                continue
-            for col in range(8):
-                if rowByte & (0x80 >> col):
-                    display.pixel(sx + col, sy + row, color)
+                    raise ValueError(
+                        "Caracter de pieza no reconocido: '%s' (ASCII %d) en posicion file=%d, rank=%d"
+                        % (piece, asciiCode, file, rank)
+                    )
+
+                writeTile(sx, sy, tile)

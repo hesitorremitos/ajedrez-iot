@@ -93,8 +93,8 @@ print(chess.getPiece('e4'))  # ' ' (Casilla vacia)
 - Minusculas: piezas negras (p, n, b, r, q, k)
 - Espacio: casilla vacia
 
-#### `getBoard() -> list`
-Retorna la representacion interna del tablero como lista de 64 caracteres.
+#### `getBoard() -> str`
+Retorna la representacion del tablero como cadena de 64 caracteres.
 
 ```python
 chess = Chess()
@@ -105,7 +105,7 @@ print(board[56])  # 'r' (a8)
 print(board[60])  # 'k' (e8)
 ```
 
-Indice 0 = a1, indice 63 = h8. Acceso directo O(1) sin parsear FEN.
+Indice 0 = a1, indice 63 = h8. Formato consistente para integracion con display.
 
 #### `reset()`
 Reinicia el tablero a la posicion inicial.
@@ -308,7 +308,7 @@ chess.getLegalMoves('d7')    # ['d7-d6', 'd7-d5']
 chess.getTurn()              # 'b'
 chess.isCheck()              # False
 chess.getPiece('e4')         # 'P'
-chess.getBoard()             # lista de 64 caracteres
+chess.getBoard()             # cadena de 64 caracteres
 chess.getFen()               # FEN completo con 6 campos
 
 # Material insuficiente
@@ -333,7 +333,7 @@ Las pruebas cubren:
 
 ## Notas Tecnicas
 
-- Representacion interna del tablero: lista de 64 caracteres (indice 0 = a1, indice 63 = h8)
+- Representacion interna: lista mutable de 64 chars; API publica `getBoard()` retorna cadena de 64 caracteres
 - `halfmoveClock` y `fullmoveNumber` se mantienen internamente como parte del estado FEN
 - Optimizado para uso de memoria en ESP32
 - Compatible con MicroPython
