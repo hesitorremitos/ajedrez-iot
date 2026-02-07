@@ -8,6 +8,10 @@ dependencies = [
     "pytest>=9.0.2",
 ]
 
+[project.scripts]
+build = "build:main"
+deploy = "deploy:main"
+
 [project.optional-dependencies]
 dev = [
     "micropython-esp32-stubs>=1.27.0.post1",
@@ -16,3 +20,17 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "adafruit-ampy>=1.1.0",
+    "esptool>=5.1.0",
+    "mpy-cross>=1.27.0.post2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["build", "deploy"]
