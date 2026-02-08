@@ -1,158 +1,156 @@
 # AGENTS Guide for Zulma
 
-This is the default playbook for coding agents working in this repository.
-Follow it for commands, architecture constraints, and style decisions.
+This playbook is for coding agents working in `C:\laragon\www\zulma`.
+Follow it for commands, architecture boundaries, and style expectations.
 
-## Rule Sources
+## Rule Sources (Merged)
+- Cursor rules file: not found (`.cursorrules`)
+- Cursor rules directory: not found (`.cursor/rules/`)
+- Copilot rules: found at `.github/copilot-instructions.md` and merged here
 
-- Not found: `.cursorrules`
-- Not found: `.cursor/rules/`
-
-If Cursor rules appear later, merge them into this file.
+Merged Copilot guidance:
+- Target platform is MicroPython on ESP32 with modular architecture.
+- Public API naming is intentionally camelCase (non-pythonic by design).
+- Prioritize memory-aware implementations for constrained hardware.
+- Keep module exports explicit in each `modules/<name>/__init__.py`.
 
 ## Project Snapshot
-
 - Runtime target: MicroPython on ESP32
-- Local dev runtime: CPython 3.11+
+- Local development runtime: CPython 3.11+
+- Package/dependency tool: `uv`
 - Test framework: `pytest`
-- Dependency manager: `uv`
-- Primary modules: `chess`, `network`, `chessclock`, `chessdisplay`
-- Core priority: memory-aware implementations for constrained hardware
-
-## Environment Setup
-
-```bash
-# install dependencies
-uv sync
-
-# optional dev dependencies
-uv sync --extra dev
-```
-
-Pytest config in `pyproject.toml`:
-- `testpaths = ["tests"]`
-- `pythonpath = ["."]`
-
-## Build, Lint, Test Commands
-
-There is no dedicated build command and no configured linter/formatter.
-The main quality gate is tests.
-
-```bash
-# run full test suite
-uv run pytest
-
-# verbose output
-uv run pytest -v
-
-# stop on first failure
-uv run pytest -x
-
-# run one module folder
-uv run pytest tests/modules/chess
-
-# run one test file
-uv run pytest tests/modules/chess/test_basic_moves.py
-
-# run one test class
-uv run pytest tests/modules/network/test_access_point.py::TestAccessPointStart
-
-# run one test function (single test)
-uv run pytest tests/modules/chess/test_basic_moves.py::test_pawn_single_push
-
-# run tests by keyword expression
-uv run pytest -k "checkmate or stalemate"
-```
-
-Fallback if `uv` is unavailable: run `pytest` with the same arguments.
+- Primary modules: `chess`, `network`, `chessclock`, `chessdisplay`, `sse`
+- Utility scripts: `build.py` and `deploy.py`
 
 ## Repository Layout
-
 ```text
 modules/
   <NAME>_REQUIREMENTS.md
   <module>/
     __init__.py
     <ClassName>.py
-
 tests/
   conftest.py
   modules/<module>/test_*.py
+lib/                    # runtime libs for device
+build/                  # generated artifacts for deployment
+build.py                # `uv run build`
+deploy.py               # `uv run deploy`
+```
+
+## Setup Commands
+```bash
+# install base dependencies
+uv sync
+# optional project extras
+uv sync --extra dev
+# dev tool group (mpy-cross, esptool, ampy)
+uv sync --group dev
+```
+
+## Build, Lint, and Test Commands
+There is no configured linter/formatter/type-checker in `pyproject.toml`.
+Primary quality gate is automated tests.
+
+```bash
+# full suite
+uv run pytest
+# verbose
+uv run pytest -v
+# stop on first failure
+uv run pytest -x
+# one module folder
+uv run pytest tests/modules/chess
+# one file
+uv run pytest tests/modules/chess/test_basic_moves.py
+# one class
+uv run pytest tests/modules/network/test_access_point.py::TestAccessPointStart
+# one specific test (single test)
+uv run pytest tests/modules/chess/test_basic_moves.py::test_pawn_single_push
+# keyword filter
+uv run pytest -k "checkmate or stalemate"
+```
+
+Fallback when `uv` is unavailable: run `pytest` with the same arguments.
+
+```bash
+# compile lib/*.py -> build/lib/*.mpy
+uv run build
+# upload build/ to board (CLI arg)
+uv run deploy COM5
+# upload build/ using env var
+ESP32_PORT=COM5 uv run deploy
 ```
 
 ## Architecture and Boundaries
-
-- Read `modules/*_REQUIREMENTS.md` before implementing changes
-- Keep modules focused and testable
-- Preserve clear boundaries between game logic, clocks, rendering, and transport
+- Read relevant docs in `modules/*_REQUIREMENTS.md` before editing code.
+- Keep each module focused on one responsibility.
+- Preserve boundaries between rule engine, networking, clock, and rendering.
+- Do not move orchestration concerns into pure rule modules unless required.
+- Avoid heavy dependencies that reduce MicroPython compatibility.
 
 ## Naming Conventions (Critical)
-
 Public APIs intentionally use camelCase. Do not convert to snake_case.
 
-- Methods: `getLegalMoves`, `isCheckmate`, `setFen`
+- Methods: `getLegalMoves`, `isCheckmate`, `setFen`, `getStatus`
 - Attributes: `currentTurnMove`, `castlingRights`, `clientCount`
 - Private members: `_` + camelCase, e.g. `_halfmoveClock`
 - Constants: `UPPER_SNAKE_CASE`, e.g. `INITIAL_FEN`, `_AP_IP`
-- Tests can keep normal pytest snake_case naming
+- Tests may keep pytest-style snake_case names
 
-## Imports and Dependencies
+## Imports and Dependency Style
+- Order imports as: stdlib, third-party, local modules.
+- Keep imports minimal and explicit.
+- Guard MicroPython-only imports in testable code paths:
+  - `try: import network`
+  - `except ImportError: network = None`
+- Avoid global mutable state unless needed for runtime constraints.
 
-- Import order: stdlib first, then local imports
-- Keep imports minimal for MicroPython compatibility
-- Guard hardware/platform imports in testable code paths:
-  - `try: import <module>`
-  - `except ImportError: <name> = None`
-- Avoid heavy dependencies unless explicitly required
-
-## Formatting and Code Style
-
-- Follow existing style in touched files
-- Use 4-space indentation
-- Avoid unrelated reformatting
-- Prefer explicit control flow over clever abstractions
-- Add comments only when intent is non-obvious
-- Preserve existing Spanish/English docstring patterns where present
+## Formatting and General Style
+- Follow existing style in touched files.
+- Use 4-space indentation.
+- Prefer explicit control flow over clever abstractions.
+- Avoid unrelated reformatting and broad refactors.
+- Add comments only for non-obvious intent.
+- Preserve existing Spanish/English docstring patterns where present.
 
 ## Types and API Contracts
+- Runtime modules generally avoid Python type hints.
+- Tooling/helper scripts may use type hints when already established.
+- Use docstrings for non-trivial param/return behavior.
+- Preserve return contracts used by callers and tests.
+- Many command methods return `True`/`False` instead of raising.
+- Do not change public signatures without requirements updates.
 
-- Runtime modules generally avoid Python type hints
-- Use docstrings to clarify parameters/returns when needed
-- Preserve existing return contracts
-- Command-like operations often return `True`/`False`
-- Do not change public signatures unless requirements demand it
+## Error Handling Expectations
+- Fail gracefully around hardware, serial, and network interactions.
+- Prefer predictable fallback values over uncaught exceptions.
+- Keep exception handling simple in hot paths.
+- Preserve conventions:
+  - action methods: return `False` on failure
+  - query methods: return empty list/dict-like fallback when appropriate
+- For scripts (`build.py`, `deploy.py`), return non-zero exit code on failure.
 
-## Error Handling
-
-- Fail gracefully around hardware/external interactions
-- Avoid exception-heavy control flow in hot paths
-- Preserve current fallback conventions:
-  - `False` for command failures
-  - empty list/dict-like values for query failures when appropriate
-
-## Memory and Performance
-
-ESP32 memory constraints are first-order design constraints.
-
-- Avoid precomputing large move sets
-- Avoid unbounded caches
-- Avoid features that materially increase resident RAM usage
-- Keep allocations modest in frequently called methods
+## Memory and Performance Rules (ESP32 First)
+- Avoid precomputing large structures unless clearly justified.
+- Avoid unbounded caches and unnecessary object churn.
+- Keep allocations modest in frequently called methods.
+- Prefer compact data representations.
+- Keep debug/logging optional and lightweight.
 
 ## Testing Conventions
-
-- Write focused arrange/act/assert tests
-- Reuse fixtures from `tests/conftest.py`
-- Keep helper assertions small and local where practical
-- Mock MicroPython-specific modules for CPython test runs
-- Run single-test targets first, then broader suites
+- Write focused arrange/act/assert tests.
+- Reuse fixtures from `tests/conftest.py` when possible.
+- Use mocks for MicroPython-specific modules under CPython tests.
+- Run the most targeted single test first, then broaden scope.
+- Keep tests under `tests/modules/<module>/`.
 
 ## Agent Checklist
-
-1. Read related `modules/*_REQUIREMENTS.md`
-2. Preserve camelCase API names
-3. Keep exports accurate in each `__init__.py`
-4. Add/update matching tests under `tests/modules/<module>/`
-5. Run at least one single-test command for touched behavior
-6. Run broader test scope before finishing when feasible
-7. Avoid unrelated refactors and heavy dependencies
+1. Read related `modules/*_REQUIREMENTS.md` before coding.
+2. Preserve camelCase API names across public/private members.
+3. Keep `__init__.py` exports accurate after edits.
+4. Add/update tests for behavior changes.
+5. Run at least one single-test command for touched behavior.
+6. Run broader pytest scope when feasible.
+7. Avoid unrelated refactors and dependency creep.
+8. If `.cursorrules` or `.cursor/rules/` is added later, merge into this file.
