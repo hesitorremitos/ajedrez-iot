@@ -200,7 +200,8 @@ class ChessClock:
         Si el reloj esta corriendo, sincroniza primero, aplica el
         cambio y continua corriendo desde ese instante.
         Si el resultado es 0, entra en timeout: auto-pause y
-        dispara onTimeout una sola vez.
+        dispara onTimeout una sola vez. Si el tiempo vuelve a
+        ser > 0, se limpia el latch para permitir nuevo timeout.
 
         Args:
             ms: int (ms). Se clamplea a >= 0.
@@ -213,6 +214,8 @@ class ChessClock:
 
         self._time = ms if ms > 0 else 0
 
+        if self._time > 0:
+            self._timeoutNotified = False
         if self._time == 0:
             self._running = False
             self._notifyTimeout()
@@ -229,6 +232,8 @@ class ChessClock:
         Si el reloj esta corriendo, sincroniza primero, aplica,
         y sigue corriendo. Clamp final a >= 0.
         Si el resultado es 0, aplica politica de timeout.
+        Si el tiempo vuelve a ser > 0, limpia el latch para
+        permitir nuevo timeout.
 
         Args:
             delta: int (ms). Puede ser negativo.
@@ -243,6 +248,8 @@ class ChessClock:
         if self._time < 0:
             self._time = 0
 
+        if self._time > 0:
+            self._timeoutNotified = False
         if self._time == 0:
             self._running = False
             self._notifyTimeout()
