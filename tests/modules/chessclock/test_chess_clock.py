@@ -5,10 +5,10 @@ def test_timeout_latch_resets_on_set_time():
     clock = ChessClock()
     timeouts = []
 
-    def onTimeout():
+    def on_timeout():
         timeouts.append("timeout")
 
-    clock.onTimeout = onTimeout
+    clock.onTimeout = on_timeout
     clock.setTime(0)
     assert timeouts == ["timeout"]
 
@@ -21,10 +21,10 @@ def test_timeout_latch_resets_on_add_time():
     clock = ChessClock()
     timeouts = []
 
-    def onTimeout():
+    def on_timeout():
         timeouts.append("timeout")
 
-    clock.onTimeout = onTimeout
+    clock.onTimeout = on_timeout
     clock.setTime(0)
     assert len(timeouts) == 1
 
