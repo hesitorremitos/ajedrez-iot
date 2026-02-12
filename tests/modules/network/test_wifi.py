@@ -24,6 +24,7 @@ class MockWLAN:
         self._config = {}
         self._ifconfig = ("0.0.0.0", "255.255.255.0", "0.0.0.0", "0.0.0.0")
         self._scan_results = []
+        self._connectCalls = []
 
     def active(self, state=None):
         if state is None:
@@ -38,14 +39,34 @@ class MockWLAN:
             self._ifconfig = config
         return self._ifconfig
 
-    def connect(self, ssid, password=None):
-        pass  # Connection happens asynchronously
+    def connect(self, *args):
+        self._connectCalls.append(args)
 
     def isconnected(self):
         return self._connected
 
     def scan(self):
         return self._scan_results
+
+
+class MockTask:
+    """Lightweight awaitable task-like object for tests."""
+
+    def __init__(self):
+        self.cancelCalled = 0
+        self._cancelled = False
+
+    def cancel(self):
+        self.cancelCalled += 1
+        self._cancelled = True
+
+    def __await__(self):
+        async def _wait():
+            if self._cancelled:
+                raise asyncio.CancelledError()
+            return None
+
+        return _wait().__await__()
 
 
 @pytest.fixture
@@ -88,7 +109,12 @@ def mock_time():
 def wifi_module(mock_network, mock_time):
     """Import WiFi with mocked network, time, and uasyncio"""
     mock_uasyncio = MagicMock()
-    mock_uasyncio.create_task = MagicMock(return_value=MagicMock())
+
+    def create_task(coro):
+        coro.close()
+        return MockTask()
+
+    mock_uasyncio.create_task = MagicMock(side_effect=create_task)
 
     async def mock_sleep_ms(ms):
         await asyncio.sleep(0)
@@ -175,18 +201,50 @@ class TestApStart:
 
     @pytest.mark.asyncio
     async def test_ac04_start_noop_when_already_active(self, wifi_module):
-        """AC-04: second start returns True without reconfiguring"""
+        """AC-04: second start is a no-op, including stored status"""
         module, mock_net, _ = wifi_module
         wifi = module.WiFi()
 
-        await wifi.ap.start(ssid="Test", password="12345678")
+        await wifi.ap.start(ssid="Test", password="12345678", ip="192.168.4.1")
         ap_nic = mock_net.WLAN(mock_net.AP_IF)
         original_config = dict(ap_nic._config)
+        original_status = wifi.ap.getStatus()
 
-        result = await wifi.ap.start(ssid="Other", password="newpass")
+        result = await wifi.ap.start(ssid="Other", password="newpass", ip="10.0.0.1")
 
         assert result is True
         assert ap_nic._config == original_config
+        assert wifi.ap.getStatus() == original_status
+
+    @pytest.mark.asyncio
+    async def test_ap_start_returns_false_when_activation_times_out(self, wifi_module):
+        """AP start fails when active() never becomes True."""
+        module, mock_net, _ = wifi_module
+        wifi = module.WiFi(debug=True)
+        wifi._log = MagicMock()
+
+        class StuckApWLAN(MockWLAN):
+            def active(self, state=None):
+                if state is None:
+                    return False
+                self._active = False
+
+        stuck_ap = StuckApWLAN(mock_net.AP_IF)
+
+        def create_wlan(interface_type):
+            if interface_type == mock_net.AP_IF:
+                return stuck_ap
+            return MockWLAN(interface_type)
+
+        mock_net.WLAN = create_wlan
+
+        result = await wifi.ap.start(
+            ssid="NeverUp", password="12345678", ip="10.10.10.1"
+        )
+
+        assert result is False
+        assert wifi.ap.getStatus() == {"active": False, "ssid": "", "ip": ""}
+        wifi._log.assert_any_call("AP activation timeout")
 
     @pytest.mark.asyncio
     async def test_ac09_start_returns_false_on_error(self, wifi_module):
@@ -278,20 +336,50 @@ class TestStaStart:
     @pytest.mark.asyncio
     async def test_ac11_start_restarts_if_already_active(self, wifi_module):
         """AC-11: starting STA again cancels previous task"""
-        module, mock_net, mock_async = wifi_module
+        module, _, mock_async = wifi_module
         wifi = module.WiFi()
 
-        first_task = MagicMock()
-        mock_async.create_task.return_value = first_task
+        first_task = MockTask()
+        second_task = MockTask()
+
+        created_tasks = [first_task, second_task]
+
+        def create_task_override(coro):
+            coro.close()
+            return created_tasks.pop(0)
+
+        mock_async.create_task.side_effect = create_task_override
 
         await wifi.sta.start(ssid="First", password="pass1")
 
-        second_task = MagicMock()
-        mock_async.create_task.return_value = second_task
-
         await wifi.sta.start(ssid="Second", password="pass2")
 
-        first_task.cancel.assert_called_once()
+        assert first_task.cancelCalled == 1
+
+    @pytest.mark.asyncio
+    async def test_sta_open_network_uses_consistent_connect_style(self, wifi_module):
+        """Open-network connect calls use single-arg style in start and monitor."""
+        module, mock_net, _ = wifi_module
+        wifi = module.WiFi()
+
+        await wifi.sta.start(ssid="CafeWiFi", password=None, maxReconnects=2)
+        sta_nic = mock_net.WLAN(mock_net.STA_IF)
+        assert sta_nic._connectCalls[0] == ("CafeWiFi",)
+
+        call_count = [0]
+
+        async def fake_sleep_ms(ms):
+            call_count[0] += 1
+            if call_count[0] > 2:
+                raise asyncio.CancelledError()
+            await asyncio.sleep(0)
+
+        module.uasyncio.sleep_ms = fake_sleep_ms
+        sta_nic._connected = False
+
+        await wifi.sta._monitor()
+
+        assert ("CafeWiFi",) in sta_nic._connectCalls[1:]
 
     @pytest.mark.asyncio
     async def test_ac29_start_returns_false_on_error(self, wifi_module):
@@ -315,24 +403,19 @@ class TestStaStop:
     @pytest.mark.asyncio
     async def test_ac12_stop_deactivates_and_cancels_task(self, wifi_module):
         """AC-12: stop deactivates STA_IF, cancels task, returns True"""
-        module, mock_net, mock_async = wifi_module
+        module, mock_net, _ = wifi_module
         wifi = module.WiFi()
 
-        # Create a proper async mock that raises CancelledError when awaited
-        async def cancelled_coro():
-            raise asyncio.CancelledError()
-
-        task_mock = asyncio.create_task(asyncio.sleep(9999))  # Real task
-        task_mock.cancel()  # Cancel it immediately
-        mock_async.create_task.return_value = task_mock
-
         await wifi.sta.start(ssid="MiCasa", password="secret")
+
+        task = wifi.sta._task
 
         result = await wifi.sta.stop()
 
         sta_nic = mock_net.WLAN(mock_net.STA_IF)
         assert result is True
         assert sta_nic.active() is False
+        assert task.cancelCalled == 1
 
     @pytest.mark.asyncio
     async def test_ac13_stop_noop_when_not_started(self, wifi_module):
@@ -630,6 +713,52 @@ class TestStaCallbacks:
             pass
 
         assert connect_cb.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_monitor_isolates_callback_exceptions(self, wifi_module):
+        """Exceptions in callbacks are logged and do not break monitor flow."""
+        module, mock_net, _ = wifi_module
+        wifi = module.WiFi(debug=True)
+        wifi._log = MagicMock()
+
+        await wifi.sta.start(ssid="MiCasa", password="secret", maxReconnects=2)
+        sta_nic = mock_net.WLAN(mock_net.STA_IF)
+
+        connect_sequence = iter([True, False, False])
+
+        def dynamic_isconnected():
+            return next(connect_sequence, False)
+
+        sta_nic.isconnected = dynamic_isconnected
+        sta_nic._ifconfig = (
+            "192.168.1.110",
+            "255.255.255.0",
+            "192.168.1.1",
+            "0.0.0.0",
+        )
+
+        wifi.sta.onConnect = lambda ip: (_ for _ in ()).throw(
+            RuntimeError("connect boom")
+        )
+        wifi.sta.onDisconnect = lambda: (_ for _ in ()).throw(
+            RuntimeError("disconnect boom")
+        )
+        wifi.sta.onReconnectFail = lambda: (_ for _ in ()).throw(
+            RuntimeError("fail boom")
+        )
+
+        async def fake_sleep_ms(ms):
+            await asyncio.sleep(0)
+
+        module.uasyncio.sleep_ms = fake_sleep_ms
+
+        await wifi.sta._monitor()
+
+        assert sta_nic.active() is False
+        log_messages = [call.args[0] for call in wifi._log.call_args_list]
+        assert any("onConnect callback failed" in msg for msg in log_messages)
+        assert any("onDisconnect callback failed" in msg for msg in log_messages)
+        assert any("onReconnectFail callback failed" in msg for msg in log_messages)
 
 
 # ---------------------------------------------------------------------------

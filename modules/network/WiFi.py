@@ -36,10 +36,6 @@ class _Ap:
             bool: True if successful or already active, False on error
         """
         try:
-            # Store config values always
-            self._ssid = ssid
-            self._ip = ip
-
             if self._nic is not None and self._nic.active():
                 return True
 
@@ -53,6 +49,13 @@ class _Ap:
             while not self._nic.active() and max_wait > 0:
                 await uasyncio.sleep_ms(50)
                 max_wait -= 1
+
+            if not self._nic.active():
+                self._wifi._log("AP activation timeout")
+                return False
+
+            self._ssid = ssid
+            self._ip = ip
 
             if password is None or password == "":
                 self._nic.config(essid=ssid, authmode=0)
@@ -136,7 +139,10 @@ class _Sta:
                 self._nic = network.WLAN(network.STA_IF)
 
             self._nic.active(True)
-            self._nic.connect(ssid, password if password else "")
+            if password is None or password == "":
+                self._nic.connect(ssid)
+            else:
+                self._nic.connect(ssid, password)
 
             self._wifi._log("STA connecting to: {}".format(ssid))
 
@@ -205,13 +211,23 @@ class _Sta:
                         _reconnectCount = 0
                         ip = self._nic.ifconfig()[0]
                         if self.onConnect:
-                            self.onConnect(ip)
+                            try:
+                                self.onConnect(ip)
+                            except Exception as exc:
+                                self._wifi._log(
+                                    "STA onConnect callback failed: {}".format(exc)
+                                )
                         self._wifi._log("STA connected, IP: {}".format(ip))
                 else:
                     if _wasConnected:
                         _wasConnected = False
                         if self.onDisconnect:
-                            self.onDisconnect()
+                            try:
+                                self.onDisconnect()
+                            except Exception as exc:
+                                self._wifi._log(
+                                    "STA onDisconnect callback failed: {}".format(exc)
+                                )
                         self._wifi._log("STA disconnected")
 
                     _reconnectCount += 1
@@ -228,16 +244,23 @@ class _Sta:
                             )
                         )
                         if self.onReconnectFail:
-                            self.onReconnectFail()
+                            try:
+                                self.onReconnectFail()
+                            except Exception as exc:
+                                self._wifi._log(
+                                    "STA onReconnectFail callback failed: {}".format(
+                                        exc
+                                    )
+                                )
                         self._nic.active(False)
                         self._task = None
                         return
 
                     try:
-                        if self._password:
-                            self._nic.connect(self._ssid, self._password)
-                        else:
+                        if self._password is None or self._password == "":
                             self._nic.connect(self._ssid)
+                        else:
+                            self._nic.connect(self._ssid, self._password)
                     except Exception:
                         pass
 
