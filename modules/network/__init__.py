@@ -1,9 +1,9 @@
 """
 Network module for ESP32 (MicroPython)
 
-Provides network-related functionality including WiFi Access Point management.
+Provides unified WiFi management (AP + STA).
 """
 
-from .AccessPoint import AccessPoint
+from .WiFi import WiFi
 
-__all__ = ["AccessPoint"]
+__all__ = ["WiFi"]
