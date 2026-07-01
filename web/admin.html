@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrador — ADAP Potosí</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.base.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.brown.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.cburnett.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-body">
+
+    <header class="admin-header">
+        <div class="admin-header-titulo">
+            <div class="login-icono-tablero"
+                 style="width:36px;height:36px;grid-template-columns:repeat(4,9px);grid-template-rows:repeat(4,9px);"
+                 aria-hidden="true">
+                <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+                <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+                <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+                <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+            </div>
+            <div>
+                <h1>Asociación Departamental de Ajedrez de Potosí</h1>
+                <p>Panel de Administrador</p>
+            </div>
+        </div>
+        <button class="btn btn-primary" id="btn-salir" style="flex-shrink:0;">
+            <i class="fas fa-sign-out-alt"></i> Salir
+        </button>
+    </header>
+
+    <div class="admin-main" id="admin-panel">
+
+        <div>
+
+            <div class="card">
+                <h3><i class="fas fa-cogs"></i> Configuración de Partida</h3>
+                <input type="text" id="jugador-blancas" placeholder="Nombre — Jugador Blancas">
+                <input type="text" id="jugador-negras" placeholder="Nombre — Jugador Negras">
+                <input type="number" id="minutos-reloj" placeholder="Minutos por jugador" min="1" max="60" value="10">
+                <div class="grupo-botones">
+                    <button class="btn btn-primary" id="btn-nueva-partida" type="button">
+                        <i class="fas fa-play"></i> Iniciar Partida
+                    </button>
+                    <button class="btn btn-gold" id="btn-finalizar" type="button">
+                        <i class="fas fa-flag-checkered"></i> Finalizar
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-clock"></i> Relojes</h3>
+                <div class="reloj-container">
+                    <div class="reloj blancas" id="reloj-blancas-caja">
+                        <div id="blancas-tiempo" class="tiempo">10:00</div>
+                        <div class="texto-suave" style="margin-top:6px;font-size:0.70rem;" id="nombre-blancas-esp">—</div>
+                    </div>
+                    <div class="reloj negras" id="reloj-negras-caja">
+                        <div id="negras-tiempo" class="tiempo">10:00</div>
+                        <div class="texto-suave" style="margin-top:6px;font-size:0.70rem;" id="nombre-negras-esp">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>
+                    <i class="fas fa-chess-board"></i> Tablero IoT
+                    <span id="conexion-status" class="status desconectado">Servidor desconectado</span>
+                </h3>
+                <div class="tablero-layout">
+                    <div class="tablero-letras" aria-hidden="true">
+                        <span></span>
+                        <span>a</span><span>b</span><span>c</span><span>d</span>
+                        <span>e</span><span>f</span><span>g</span><span>h</span>
+                    </div>
+                    <div class="tablero-fila">
+                        <div class="tablero-numeros" aria-hidden="true">
+                            <span>8</span><span>7</span><span>6</span><span>5</span>
+                            <span>4</span><span>3</span><span>2</span><span>1</span>
+                        </div>
+                        <div id="tablero" class="tablero-chessground"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div>
+
+            <div class="card">
+                <h3><i class="fas fa-list-ol"></i> Notación Algebraica PGN</h3>
+                <div id="pgn-moves" class="pgn-container">Esperando partida...</div>
+                <div class="grupo-botones">
+                    <button class="btn btn-success" id="btn-copiar-pgn" type="button">
+                        <i class="fas fa-copy"></i> Copiar PGN
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-microchip"></i> Estado del Tablero</h3>
+                <div class="iot-info">
+                    <p>
+                        <strong>Último movimiento recibido</strong>
+                        <span id="ultimo-mov">—</span>
+                    </p>
+                    <p>
+                        <strong>Sensores activos</strong>
+                        <span id="sensores-activos">0 / 64</span>
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "@lichess-org/chessground": "https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/dist/chessground.js",
+            "mqtt": "https://unpkg.com/mqtt@5.10.4/dist/mqtt.esm.js",
+            "chess.js": "https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/esm/chess.js"
+        }
+    }
+    </script>
+    <script type="module" src="js/board.js"></script>
+    <script type="module" src="js/admin.js"></script>
+
+</body>
+</html>

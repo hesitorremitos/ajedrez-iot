@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADAP Potosí — Transmisión en vivo</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.base.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.brown.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/assets/chessground.cburnett.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="espectador-body">
+
+    <header class="espectador-header">
+        <div class="login-icono-tablero" style="width:40px;height:40px;grid-template-columns:repeat(4,10px);grid-template-rows:repeat(4,10px);" aria-hidden="true">
+            <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+            <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+            <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+            <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+        </div>
+        <div>
+            <h1>Asociación Departamental de Ajedrez de Potosí</h1>
+            <p>Transmisión en tiempo real &nbsp;·&nbsp; Vista Espectador</p>
+        </div>
+        <div style="margin-left:auto; display: flex; align-items: center; gap: 15px;">
+            <div class="espectadores-badge">
+                <i class="fas fa-users" style="font-size:0.75rem;"></i>
+                <span id="espectadores-count">1 espectador</span>
+            </div>
+            <a href="login.html" class="btn btn-primary" style="flex-shrink:0; text-decoration:none;">
+                <i class="fas fa-user-shield"></i> Admin
+            </a>
+        </div>
+    </header>
+
+    <div class="espectador-main">
+        <div class="espectador-col-tablero">
+            <div class="tablero-layout tablero-layout--grande">
+                <div class="tablero-letras" aria-hidden="true">
+                    <span></span>
+                    <span>a</span><span>b</span><span>c</span><span>d</span>
+                    <span>e</span><span>f</span><span>g</span><span>h</span>
+                </div>
+                <div class="tablero-fila">
+                    <div class="tablero-numeros" aria-hidden="true">
+                        <span>8</span><span>7</span><span>6</span><span>5</span>
+                        <span>4</span><span>3</span><span>2</span><span>1</span>
+                    </div>
+                    <div id="tablero" class="tablero-chessground"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="espectador-col-datos">
+            <div class="card">
+                <h3><i class="fas fa-clock"></i> Relojes</h3>
+                <div class="reloj-container">
+                    <div class="reloj blancas" id="reloj-blancas-caja">
+                        <div id="blancas-tiempo" class="tiempo">10:00</div>
+                        <div class="texto-suave" style="margin-top:6px;font-size:0.70rem;" id="nombre-blancas-esp">—</div>
+                    </div>
+                    <div class="reloj negras" id="reloj-negras-caja">
+                        <div id="negras-tiempo" class="tiempo">10:00</div>
+                        <div class="texto-suave" style="margin-top:6px;font-size:0.70rem;" id="nombre-negras-esp">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-chess"></i> Estado de la Partida</h3>
+                <div id="turno-badge" class="turno-badge">
+                    <div class="turno-ficha" id="turno-ficha" style="background:#ffffff; border-color:#f6f2f2;"></div>
+                    <span>Turno: <strong id="turno-texto">Blancas</strong></span>
+                </div>
+                <p class="texto-suave" style="margin-top:10px;">
+                    <i class="fas fa-plug" style="margin-right:6px;"></i>
+                    Estado: <span id="conexion-status-esp" class="status desconectado" style="margin-left:6px;">Servidor desconectado</span>
+                </p>
+            </div>
+
+            <div class="card">
+                <h3><i class="fas fa-list-ol"></i> Historial de Movimientos (PGN)</h3>
+                <div id="pgn-moves" class="pgn-container">Esperando inicio de partida...</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "@lichess-org/chessground": "https://cdn.jsdelivr.net/npm/@lichess-org/chessground@10.1.0/dist/chessground.js",
+            "mqtt": "https://unpkg.com/mqtt@5.10.4/dist/mqtt.esm.js",
+            "chess.js": "https://cdn.jsdelivr.net/npm/chess.js@1.0.0/dist/esm/chess.js"
+        }
+    }
+    </script>
+    <script type="module" src="js/board.js"></script>
+
+</body>
+</html>

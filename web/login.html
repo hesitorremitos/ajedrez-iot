@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso — ADAP Potosí</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-body">
+
+    <div class="login-container">
+        <div class="login-card">
+
+            <div class="login-logo">
+                <div class="login-icono-tablero" aria-hidden="true">
+                    <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+                    <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+                    <span class="cl"></span><span class="os"></span><span class="cl"></span><span class="os"></span>
+                    <span class="os"></span><span class="cl"></span><span class="os"></span><span class="cl"></span>
+                </div>
+                <h1>ASOCIACIÓN DEPARTAMENTAL<br>DE AJEDREZ DE POTOSÍ</h1>
+            </div>
+
+            <div>
+                <input
+                    type="text"
+                    id="username"
+                    placeholder="Usuario"
+                    maxlength="20"
+                    autocomplete="username"
+                    aria-label="Usuario"
+                >
+                <input
+                    type="password"
+                    id="password"
+                    placeholder="Contraseña"
+                    maxlength="20"
+                    autocomplete="current-password"
+                    aria-label="Contraseña"
+                >
+                <button class="btn-login" id="btn-login" type="button">
+                    <i class="fas fa-sign-in-alt"></i> INGRESAR
+                </button>
+            </div>
+
+            <div class="login-credenciales">
+                <div class="cred-titulo">
+                    <i class="fas fa-info-circle"></i> Credenciales de acceso
+                </div>
+                <div class="cred-item">
+                    <i class="fas fa-user-shield"></i>
+                    <strong>ADMIN</strong>
+                    <span>admin / 1234</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module" src="js/login.js"></script>
+
+</body>
+</html>
