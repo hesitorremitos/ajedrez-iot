@@ -1,126 +1,145 @@
-import gc
-import ujson as json
-
-from microdot import Microdot, Response
-from modules.network import AccessPoint
-from modules.sse import SSE
-
-
-ap = AccessPoint("RED GRATIS")
-ap.start()
-
-app = Microdot()
-sse = SSE()
-
-LAST_MOVE = ""
-STATE_VERSION = 0
-HISTORY_LIMIT = 100
-HISTORY = []
-mem_free = getattr(gc, "mem_free", lambda: 0)
-
-
-def get_state():
-    return {
-        "move": LAST_MOVE,
-        "mem_free": mem_free(),
-    }
-
-
-HTML = """<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Zulma SSE Test</title>
-  <style>
-    body { font-family: sans-serif; margin: 20px; }
-    button { padding: 10px 14px; margin-right: 8px; }
-    pre { background: #111; color: #ddd; padding: 12px; border-radius: 8px; min-height: 180px; }
-  </style>
-</head>
-<body>
-  <h1>SSE board updates</h1>
-  <p>Conectado a <code>/events</code>. Envia cualquier movimiento sin validacion.</p>
-  <input id="moveInput" placeholder="Ej: e2e4" value="e2e4" />
-  <button id="btnMove">Enviar movimiento</button>
-  <button id="btnState">Ver estado actual</button>
-  <pre id="log"></pre>
-
-  <script>
-    const log = document.getElementById('log');
-    const moveInput = document.getElementById('moveInput');
-    const write = (line) => {
-      log.textContent += line + '\\n';
-      log.scrollTop = log.scrollHeight;
-    };
-
-    const es = new EventSource('/events');
-    es.onopen = () => write('[open] SSE conectado');
-    es.onerror = () => write('[error] SSE reconectando...');
-
-    es.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      write('[board] ' + JSON.stringify(msg));
-    };
-
-    document.getElementById('btnMove').onclick = async () => {
-      const move = moveInput.value || '';
-      await fetch('/move', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ move })
-      });
-      write('[send] move ' + move);
-    };
-
-    document.getElementById('btnState').onclick = async () => {
-      const res = await fetch('/api/state');
-      const data = await res.json();
-      write('[state] ' + JSON.stringify(data));
-    };
-  </script>
-</body>
-</html>
+"""
+Firmware tablero IoT (ESP32).
+REPL: startGame(), play("e2-e4"), sync(), endGame(), status().
 """
 
+import uasyncio as asyncio
+import ujson as json
+from umqtt.robust import MQTTClient
 
-@app.get("/")
-def index(request):
-    return Response(HTML, headers={"Content-Type": "text/html; charset=UTF-8"})
+from modules.chess import Chess
+from modules.chessclock import ChessClock
+from modules.network import WiFi
+
+# Configuracion
+
+MQTT_TOPIC = "ajedrez"
+WIFI_SSID = "root"
+WIFI_PASSWORD = "@11235813"
+BROKER_HOST = "mqtt.inginformatica.dev"
+BROKER_PORT = 1883
+BROKER_USER = None
+BROKER_PASSWORD = None
+DEFAULT_MINUTES = 10
+
+# Variables globales
+
+wifi = WiFi(debug=False)
+chess = Chess()
+whiteClock = ChessClock()
+blackClock = ChessClock()
+
+nombresBlancas = ""
+nombresNegras = ""
+gameActive = False
+
+# Conexion (al arrancar)
+
+asyncio.run(wifi.sta.start(ssid=WIFI_SSID, password=WIFI_PASSWORD))
+
+mqtt = MQTTClient(
+    b"esp32",
+    BROKER_HOST,
+    BROKER_PORT,
+    BROKER_USER,
+    BROKER_PASSWORD,
+    ssl=False
+)
+mqtt.connect()
 
 
-@app.get("/api/state")
-def state(request):
-    return get_state()
+def switchClock():
+    if chess.getTurn() == "w":
+        blackClock.pause()
+        whiteClock.resume()
+    else:
+        whiteClock.pause()
+        blackClock.resume()
 
 
-@app.get("/api/history")
-def history(request):
-    return {"history": HISTORY}
+def startGame(minutes=DEFAULT_MINUTES, blancas="", negras=""):
+    global nombresBlancas, nombresNegras, gameActive
+    ms = int(minutes) * 60000
+    chess.reset()
+    whiteClock.reset(ms)
+    blackClock.reset(ms)
+    whiteClock.start()
+    nombresBlancas = blancas
+    nombresNegras = negras
+    gameActive = True
+    data = {
+        "fen": chess.getFen(),
+        "turno": chess.getTurn(),
+        "tiempoW": whiteClock.getText(),
+        "tiempoB": blackClock.getText(),
+        "active": gameActive,
+        "nombresBlancas": nombresBlancas,
+        "nombresNegras": nombresNegras,
+    }
+    mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    return True
 
 
-@app.post("/move")
-async def move(request):
-    global LAST_MOVE, STATE_VERSION
-    data = request.json or {}
-    if "move" in data:
-        LAST_MOVE = data["move"]
-    STATE_VERSION += 1
-    HISTORY.append(LAST_MOVE)
-    if len(HISTORY) > HISTORY_LIMIT:
-        HISTORY.pop(0)
-
-    payload = get_state()
-    await sse.send(json.dumps(payload))
-    return payload
-
-
-@app.get("/events")
-def events(request):
-    return Response(
-        sse.stream(),
-        headers={"Content-Type": "text/event-stream"},
-    )
+def play(move):
+    if not gameActive:
+        return False
+    if not chess.play(move):
+        return False
+    switchClock()
+    data = {
+        "fen": chess.getFen(),
+        "turno": chess.getTurn(),
+        "tiempoW": whiteClock.getText(),
+        "tiempoB": blackClock.getText(),
+        "active": gameActive,
+        "move": move,
+        "nombresBlancas": nombresBlancas,
+        "nombresNegras": nombresNegras,
+    }
+    mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    return True
 
 
-app.run(host="0.0.0.0", port=80, debug=True)
+def endGame():
+    global gameActive
+    if not gameActive:
+        return False
+    whiteClock.pause()
+    blackClock.pause()
+    gameActive = False
+    data = {
+        "fen": chess.getFen(),
+        "turno": chess.getTurn(),
+        "tiempoW": whiteClock.getText(),
+        "tiempoB": blackClock.getText(),
+        "active": gameActive,
+        "nombresBlancas": nombresBlancas,
+        "nombresNegras": nombresNegras,
+    }
+    mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    return True
+
+
+def sync():
+    if not gameActive:
+        return False
+    data = {
+        "fen": chess.getFen(),
+        "turno": chess.getTurn(),
+        "tiempoW": whiteClock.getText(),
+        "tiempoB": blackClock.getText(),
+        "active": gameActive,
+        "nombresBlancas": nombresBlancas,
+        "nombresNegras": nombresNegras,
+    }
+    mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    return True
+
+
+def status():
+    print("active:", gameActive)
+    print("fen:", chess.getFen())
+    print("turno:", chess.getTurn())
+    print("tiempoW:", whiteClock.getText())
+    print("tiempoB:", blackClock.getText())
+
