@@ -211,8 +211,8 @@ class ChessDisplay:
 
     def renderSidePanel(self, whiteClock, blackClock, activeColor, turnCount):
         """Actualiza todo el panel lateral en una sola llamada."""
-        if activeColor not in ("w", "b"):
-            raise ValueError("activeColor debe ser 'w' o 'b'")
+        if activeColor is not None and activeColor not in ("w", "b"):
+            raise ValueError("activeColor debe ser 'w', 'b' o None")
         if turnCount < 0:
             raise ValueError("turnCount debe ser >= 0")
 
@@ -242,6 +242,13 @@ class ChessDisplay:
         topInvert = self._activeColor == topColor
         bottomInvert = self._activeColor == bottomColor
 
+        if self._activeColor == "w":
+            activeLabel = "B"
+        elif self._activeColor == "b":
+            activeLabel = "N"
+        else:
+            activeLabel = "-"
+
         if flatBuffer:
             for page in range(8):
                 start = page * width + panelX0
@@ -250,7 +257,6 @@ class ChessDisplay:
             self._drawClockLineFlat(buf, width, 0, topClock, topInvert)
             self._drawClockLineFlat(buf, width, 48, bottomClock, bottomInvert)
 
-            activeLabel = "B" if self._activeColor == "w" else "N"
             display.text(activeLabel, 70, 28, 1)
             display.text(str(self._turnCount), 86, 28, 1)
             return
@@ -260,7 +266,6 @@ class ChessDisplay:
         self._drawClockLineFallback(display, 0, topClock, topInvert)
         self._drawClockLineFallback(display, 48, bottomClock, bottomInvert)
 
-        activeLabel = "B" if self._activeColor == "w" else "N"
         display.text(activeLabel, 70, 28, 1)
         display.text(str(self._turnCount), 86, 28, 1)
 
