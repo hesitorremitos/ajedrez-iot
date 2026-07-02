@@ -3,12 +3,15 @@ Firmware tablero IoT (ESP32).
 REPL: startGame(), play("e2-e4"), sync(), endGame(), status().
 """
 
+import _thread
+
 import uasyncio as asyncio
 import ujson as json
 from umqtt.robust import MQTTClient
 
 from modules.chess import Chess
 from modules.chessclock import ChessClock
+from modules.chessdisplay import ChessDisplay
 from modules.network import WiFi
 
 # Configuracion
@@ -22,6 +25,11 @@ BROKER_USER = None
 BROKER_PASSWORD = None
 DEFAULT_MINUTES = 10
 
+DISPLAY_ENABLED = True
+DISPLAY_SDA = 21
+DISPLAY_SCL = 22
+DISPLAY_ADDR = 0x3C
+
 # Variables globales
 
 wifi = WiFi(debug=False)
@@ -33,19 +41,40 @@ nombresBlancas = ""
 nombresNegras = ""
 gameActive = False
 
-# Conexion (al arrancar)
+display = None
+if DISPLAY_ENABLED:
+    try:
+        display = ChessDisplay(DISPLAY_SDA, DISPLAY_SCL, address=DISPLAY_ADDR)
+    except Exception as err:
+        print("Display no disponible:", err)
+        display = None
 
-asyncio.run(wifi.sta.start(ssid=WIFI_SSID, password=WIFI_PASSWORD))
 
-mqtt = MQTTClient(
-    b"esp32",
-    BROKER_HOST,
-    BROKER_PORT,
-    BROKER_USER,
-    BROKER_PASSWORD,
-    ssl=False
-)
-mqtt.connect()
+def _getTurnCount():
+    parts = chess.getFen().split()
+    if len(parts) > 5:
+        return int(parts[5])
+    return 1
+
+
+def _sidePanelActiveColor():
+    turn = chess.getTurn()
+    if turn in ("w", "b"):
+        return turn
+    return "w"
+
+
+def refreshDisplay(fullBoard=True):
+    if display is None:
+        return
+    if fullBoard:
+        display.renderBoard(chess.getBoard())
+    display.renderSidePanel(
+        whiteClock.getText(),
+        blackClock.getText(),
+        _sidePanelActiveColor(),
+        _getTurnCount(),
+    )
 
 
 def switchClock():
@@ -77,6 +106,7 @@ def startGame(minutes=DEFAULT_MINUTES, blancas="", negras=""):
         "nombresNegras": nombresNegras,
     }
     mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    refreshDisplay()
     return True
 
 
@@ -97,6 +127,7 @@ def play(move):
         "nombresNegras": nombresNegras,
     }
     mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    refreshDisplay()
     return True
 
 
@@ -117,6 +148,7 @@ def endGame():
         "nombresNegras": nombresNegras,
     }
     mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    refreshDisplay()
     return True
 
 
@@ -133,6 +165,7 @@ def sync():
         "nombresNegras": nombresNegras,
     }
     mqtt.publish(MQTT_TOPIC, json.dumps(data), retain=True)
+    refreshDisplay()
     return True
 
 
@@ -143,3 +176,39 @@ def status():
     print("tiempoW:", whiteClock.getText())
     print("tiempoB:", blackClock.getText())
 
+
+async def _displayPump():
+    while True:
+        if gameActive and display is not None:
+            refreshDisplay(fullBoard=False)
+        await asyncio.sleep_ms(1000)
+
+
+async def _mainLoop():
+    await wifi.sta.start(ssid=WIFI_SSID, password=WIFI_PASSWORD)
+    if display is not None:
+        asyncio.create_task(_displayPump())
+    while True:
+        await asyncio.sleep_ms(1000)
+
+
+def _startBackground():
+    asyncio.run(_mainLoop())
+
+
+_thread.start_new_thread(_startBackground, ())
+
+mqtt = MQTTClient(
+    b"esp32",
+    BROKER_HOST,
+    BROKER_PORT,
+    BROKER_USER,
+    BROKER_PASSWORD,
+    ssl=False
+)
+mqtt.connect()
+
+_idleMs = DEFAULT_MINUTES * 60000
+whiteClock.reset(_idleMs)
+blackClock.reset(_idleMs)
+refreshDisplay()
